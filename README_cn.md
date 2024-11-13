@@ -38,7 +38,7 @@ docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ### 使用 API 进行内容检查
 
 ```bash
-curl -X POST -F "image=@/path/to/image.jpg" http://localhost:3333/check
+curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 ```
 
 ## 公共 API
@@ -46,7 +46,7 @@ curl -X POST -F "image=@/path/to/image.jpg" http://localhost:3333/check
 如果你只是想试试效果，或者不想自己部署，可以使用 vx.link 提供的公共 API 服务。
 
 ```bash
-curl -X POST -F "image=@/path/to/image.jpg" http://vx.link/public/nsfw
+curl -X POST -F "file=@/path/to/image.jpg" http://vx.link/public/nsfw
 ```
 
 请注意，该 API 速率限制为每分钟 30 次请求。

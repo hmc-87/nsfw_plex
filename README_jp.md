@@ -38,7 +38,7 @@ docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ### API を使用したコンテンツ確認
 
 ```bash
-curl -X POST -F "image=@/path/to/image.jpg" http://localhost:3333/check
+curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 ```
 
 ## パブリック API
@@ -46,7 +46,7 @@ curl -X POST -F "image=@/path/to/image.jpg" http://localhost:3333/check
 試用目的や、ご自身での展開を希望されない場合は、vx.link が提供する公開 API サービスをご利用いただけます。
 
 ```bash
-curl -X POST -F "image=@/path/to/image.jpg" http://vx.link/public/nsfw
+curl -X POST -F "file=@/path/to/image.jpg" http://vx.link/public/nsfw
 ```
 
 なお、この API には1分間あたり30リクエストの制限が設けられております。

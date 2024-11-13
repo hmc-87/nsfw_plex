@@ -40,7 +40,7 @@ docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ### Use the API for Content Checking
 
 ```bash
-curl -X POST -F "image=@/path/to/image.jpg" http://localhost:3333/check
+curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 ```
 
 ## Public API
@@ -48,7 +48,7 @@ curl -X POST -F "image=@/path/to/image.jpg" http://localhost:3333/check
 If you just want to try it out or don't want to deploy it yourself, you can use the public API service provided by vx.link.
 
 ```bash
-curl -X POST -F "image=@/path/to/image.jpg" http://vx.link/public/nsfw
+curl -X POST -F "file=@/path/to/image.jpg" http://vx.link/public/nsfw
 ```
 
 Please note that this API has a rate limit of 30 requests per minute.

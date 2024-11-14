@@ -7,12 +7,13 @@
 
 他の一般的な NSFW 検出器と比較して、本検出器には以下の利点がございます：
 
-* AI ベースで、より高い精度を実現しております。
+* AI ベースで、より高い精度を実現しています。
 * CPU のみでの推論に対応し、ほとんどのサーバーで実行可能です。
-* 複数の CPU を自動的に活用し、推論を高速化いたします。
+* 複数の CPU を自動的に活用し、推論を高速化します。
 * nsfw と normal の2カテゴリーのみの簡潔な判定を行います。
 * API として提供されるため、他のアプリケーションとの統合が容易です。
 * Docker ベースの展開により、分散配置が容易です。
+* 完全にローカルで動作し、データの安全性を保護します。
 
 ### パフォーマンス要件
 
@@ -22,10 +23,10 @@
 
 本検出器は以下のファイル形式の確認に対応しております：
 
-* 🆗 画像（対応済み）
-* 📅 動画（計画中）
-* 📅 PDF ファイル（計画中）
-* 📅 圧縮ファイル内のファイル（計画中）
+* ✅ 画像（対応済み）
+* ✅ PDF（対応済み）
+* ⏳ 動画（対応予定）
+* ⏳ 圧縮ファイル内のファイル（対応予定）
 
 ## クイックスタート
 
@@ -38,7 +39,10 @@ docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ### API を使用したコンテンツ確認
 
 ```bash
+# 画像の検出
 curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
+# PDFの検出
+curl -X POST -F "file=@/path/to/file.pdf" http://localhost:3333/pdf
 ```
 
 ## パブリック API
@@ -46,7 +50,10 @@ curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 試用目的や、ご自身での展開を希望されない場合は、vx.link が提供する公開 API サービスをご利用いただけます。
 
 ```bash
+# 画像の検出
 curl -X POST -F "file=@/path/to/image.jpg" https://vx.link/public/nsfw
+# PDFの検出
+curl -X POST -F "file=@/path/to/file.pdf" https://vx.link/public/nsfw
 ```
 
 * 提出された画像は保存されません。

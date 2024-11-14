@@ -12,7 +12,21 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     curl \
+    unrar \
+    p7zip-full \
+    python3-opencv \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Install OpenCV
+RUN pip3 install --no-cache-dir opencv-python-headless
+
+# Install rarfile and py7zr
+RUN pip3 install --no-cache-dir rarfile py7zr
 
 # Install Flask and its dependencies
 RUN pip3 install --no-cache-dir flask==2.0.1 werkzeug==2.0.3

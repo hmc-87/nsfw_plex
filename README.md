@@ -15,19 +15,21 @@ Compared to other common NSFW detectors, this detector has the following advanta
 * Simple classification with only two categories: nsfw and normal.
 * Provides service via API, making it easier to integrate with other applications.
 * Docker-based deployment, suitable for distributed deployment.
+* Purely local, protecting your data security.
 
 ### Performance Requirements
 
-Running this model requires up to 2GB of memory. No GPU support is needed.
+Running this model requires up to 2GB of memory. No GPU support is needed.  
+When handling a large number of requests simultaneously, more memory may be required.
 
 ### Supported File Types
 
 This detector supports checking the following file types:
 
-* 🆗 Images (Supported)
-* 📅 Videos (Planned)
-* 📅 PDF Files (Planned)
-* 📅 Files in Archives (Planned)
+* ✅ Images (supported)
+* ✅ PDF files (supported)
+* ⏳ Videos (planned)
+* ⏳ Files in compressed packages (planned)
 
 ## Quick Start
 
@@ -40,7 +42,10 @@ docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ### Use the API for Content Checking
 
 ```bash
+# Detect images
 curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
+# Detect PDF files
+curl -X POST -F "file=@/path/to/file.pdf" http://localhost:3333/pdf
 ```
 
 ## Public API
@@ -48,7 +53,10 @@ curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 If you just want to try it out or don't want to deploy it yourself, you can use the public API service provided by vx.link.
 
 ```bash
+# Detect images
 curl -X POST -F "file=@/path/to/image.jpg" https://vx.link/public/nsfw
+# Detect PDF files
+curl -X POST -F "file=@/path/to/file.pdf" https://vx.link/public/nsfw
 ```
 
 * Your submitted images will not be saved.

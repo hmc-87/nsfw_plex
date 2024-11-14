@@ -49,7 +49,8 @@ curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 curl -X POST -F "file=@/path/to/image.jpg" http://vx.link/public/nsfw
 ```
 
-なお、この API には1分間あたり30リクエストの制限が設けられております。
+* 提出された画像は保存されません。
+* この API のリクエストレートは1分あたり30回に制限されていますのでご注意ください。
 
 ## ライセンス
 

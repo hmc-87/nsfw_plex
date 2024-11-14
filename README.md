@@ -51,7 +51,8 @@ If you just want to try it out or don't want to deploy it yourself, you can use 
 curl -X POST -F "file=@/path/to/image.jpg" http://vx.link/public/nsfw
 ```
 
-Please note that this API has a rate limit of 30 requests per minute.
+* Your submitted images will not be saved.
+* Please note that the API rate limit is 30 requests per minute.
 
 ## License
 

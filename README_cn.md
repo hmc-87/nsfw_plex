@@ -49,7 +49,8 @@ curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 curl -X POST -F "file=@/path/to/image.jpg" http://vx.link/public/nsfw
 ```
 
-请注意，该 API 速率限制为每分钟 30 次请求。
+* 不会保存你提交的图片。
+* 请注意，该 API 速率限制为每分钟 30 次请求。
 
 ## 许可证
 

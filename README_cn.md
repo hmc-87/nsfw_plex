@@ -46,7 +46,7 @@ curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 如果你只是想试试效果，或者不想自己部署，可以使用 vx.link 提供的公共 API 服务。
 
 ```bash
-curl -X POST -F "file=@/path/to/image.jpg" http://vx.link/public/nsfw
+curl -X POST -F "file=@/path/to/image.jpg" https://vx.link/public/nsfw
 ```
 
 * 不会保存你提交的图片。

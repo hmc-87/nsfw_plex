@@ -46,7 +46,7 @@ curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 試用目的や、ご自身での展開を希望されない場合は、vx.link が提供する公開 API サービスをご利用いただけます。
 
 ```bash
-curl -X POST -F "file=@/path/to/image.jpg" http://vx.link/public/nsfw
+curl -X POST -F "file=@/path/to/image.jpg" https://vx.link/public/nsfw
 ```
 
 * 提出された画像は保存されません。

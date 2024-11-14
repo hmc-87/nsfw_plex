@@ -48,7 +48,7 @@ curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 If you just want to try it out or don't want to deploy it yourself, you can use the public API service provided by vx.link.
 
 ```bash
-curl -X POST -F "file=@/path/to/image.jpg" http://vx.link/public/nsfw
+curl -X POST -F "file=@/path/to/image.jpg" https://vx.link/public/nsfw
 ```
 
 * Your submitted images will not be saved.

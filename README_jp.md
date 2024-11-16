@@ -5,6 +5,8 @@
 これは [Falconsai/nsfw_image_detection](https://huggingface.co/Falconsai/nsfw_image_detection) に基づいた NSFW コンテンツ検出器です。  
 モデル：google/vit-base-patch16-224-in21k
 
+精度の確認は以下のリンクで行えます：[NSFW 検出器](https://www.vx.link/nsfw_detector.html)
+
 他の一般的な NSFW 検出器と比較して、本検出器には以下の利点がございます：
 
 * AI ベースで、より高い精度を実現しています。
@@ -25,7 +27,7 @@
 
 * ✅ 画像（対応済み）
 * ✅ PDF（対応済み）
-* ⏳ 動画（対応予定）
+* ✅ 動画（対応済み）
 * ⏳ 圧縮ファイル内のファイル（対応予定）
 
 ## クイックスタート
@@ -36,6 +38,8 @@
 docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ```
 
+対応システムアーキテクチャ：`x86_64`、`ARM64`。
+
 ### API を使用したコンテンツ確認
 
 ```bash
@@ -43,17 +47,17 @@ docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 # PDFの検出
 curl -X POST -F "file=@/path/to/file.pdf" http://localhost:3333/pdf
+# 检测视频文件
+curl -X POST -F "file=@/path/to/file.mp4" http://localhost:3333/video
 ```
 
 ## パブリック API
 
-試用目的や、ご自身での展開を希望されない場合は、vx.link が提供する公開 API サービスをご利用いただけます。
+vx.link が提供する公開 API サービスをご利用いただけます。
 
 ```bash
-# 画像の検出
+# ファイルの検出、自動的にファイルタイプを識別します
 curl -X POST -F "file=@/path/to/image.jpg" https://vx.link/public/nsfw
-# PDFの検出
-curl -X POST -F "file=@/path/to/file.pdf" https://vx.link/public/nsfw
 ```
 
 * 提出された画像は保存されません。

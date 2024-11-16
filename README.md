@@ -7,6 +7,8 @@
 This is an NSFW content detector based on [Falconsai/nsfw_image_detection](https://huggingface.co/Falconsai/nsfw_image_detection).  
 Model: google/vit-base-patch16-224-in21k
 
+You can try it online(using Public API): [NSFW Detector](https://www.vx.link/nsfw_detector.html)
+
 Compared to other common NSFW detectors, this detector has the following advantages:
 
 * AI-based, providing better accuracy.
@@ -28,7 +30,7 @@ This detector supports checking the following file types:
 
 * ✅ Images (supported)
 * ✅ PDF files (supported)
-* ⏳ Videos (planned)
+* ✅ Videos (supported)
 * ⏳ Files in compressed packages (planned)
 
 ## Quick Start
@@ -39,6 +41,8 @@ This detector supports checking the following file types:
 docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ```
 
+Supported architectures: `x86_64`, `ARM64`.
+
 ### Use the API for Content Checking
 
 ```bash
@@ -46,17 +50,17 @@ docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 # Detect PDF files
 curl -X POST -F "file=@/path/to/file.pdf" http://localhost:3333/pdf
+# Detect video files
+curl -X POST -F "file=@/path/to/file.mp4" http://localhost:3333/video
 ```
 
 ## Public API
 
-If you just want to try it out or don't want to deploy it yourself, you can use the public API service provided by vx.link.
+You can use the public API service provided by vx.link.
 
 ```bash
-# Detect images
+# Detect files, automatically recognize file types
 curl -X POST -F "file=@/path/to/image.jpg" https://vx.link/public/nsfw
-# Detect PDF files
-curl -X POST -F "file=@/path/to/file.pdf" https://vx.link/public/nsfw
 ```
 
 * Your submitted images will not be saved.

@@ -5,6 +5,8 @@
 这是一个 NSFW 内容检测器，它基于 [Falconsai/nsfw_image_detection](https://huggingface.co/Falconsai/nsfw_image_detection) 。  
 模型: google/vit-base-patch16-224-in21k
 
+你可以在这里验证它的准确度：[NSFW 检测器](https://www.vx.link/nsfw_detector.html)
+
 相比其它常见的 NSFW 检测器，这个检测器的优势在于：
 
 * 基于 AI ，准确度更好。
@@ -26,7 +28,7 @@
 
 * ✅ 图片（已支持）
 * ✅ PDF 文件（已支持）
-* ⏳ 视频（计划）
+* ✅ 视频（已支持）
 * ⏳ 压缩包中的文件（计划）
 
 ## 快速开始
@@ -37,6 +39,8 @@
 docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ```
 
+支持的系统架构：`x86_64`、`ARM64`。
+
 ### 使用 API 进行内容检查
 
 ```bash
@@ -44,17 +48,17 @@ docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 # 检测 PDF 文件
 curl -X POST -F "file=@/path/to/file.pdf" http://localhost:3333/pdf
+# 检测视频文件
+curl -X POST -F "file=@/path/to/file.mp4" http://localhost:3333/video
 ```
 
 ## 公共 API
 
-如果你只是想试试效果，或者不想自己部署，可以使用 vx.link 提供的公共 API 服务。
+可以使用 vx.link 提供的公共 API 服务来检测 NSFW 内容。
 
 ```bash
-# 检测图片
+# 检测文件，会自动识别文件类型
 curl -X POST -F "file=@/path/to/image.jpg" https://vx.link/public/nsfw
-# 检测 PDF 文件
-curl -X POST -F "file=@/path/to/file.pdf" https://vx.link/public/nsfw
 ```
 
 * 不会保存你提交的图片。

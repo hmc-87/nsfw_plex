@@ -32,3 +32,11 @@ MAX_FILE_SIZE = 20 * 1024 * 1024 * 1024
 
 # 超时设置
 DOWNLOAD_TIMEOUT = 30
+
+# NSFW 配置
+NSFW_THRESHOLD = 0.8  # 统一的 NSFW 检测阈值
+
+# FFmpeg 配置
+FFMPEG_MAX_FRAMES = 20          # 最大提取帧数
+MAX_INTERVAL_SECONDS = 30       # 最大采样间隔(秒)
+FFMPEG_TIMEOUT = 300           # FFmpeg 操作超时时间(秒)

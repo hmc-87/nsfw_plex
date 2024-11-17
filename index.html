@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NSFW Detector</title>
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f5f5f5;
+            overflow-x: hidden;
+        }
+
+        .header {
+            padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.9);
+            text-align: right;
+        }
+
+        .lang-switch {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .lang-switch button {
+            background: none;
+            border: 1px solid #e0e0e0;
+            color: #666;
+            padding: 6px 12px;
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        .lang-switch button:hover {
+            background: #f5f5f5;
+            border-color: #ccc;
+        }
+
+        .lang-switch button.active {
+            background: #2196F3;
+            color: white;
+            border-color: #2196F3;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+
+        h2 {
+            margin: 0 0 30px 0;
+            color: #666;
+            font-weight: normal;
+            font-size: 1.1em;
+        }
+
+        .upload-zone {
+            width: 300px;
+            height: 200px;
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: border-color 0.3s;
+            background: white;
+            padding: 20px;
+            margin: 0 auto;
+        }
+
+        .upload-zone:hover {
+            border-color: #666;
+        }
+
+        .upload-zone.dragover {
+            border-color: #2196F3;
+            background: #e3f2fd;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #eee;
+            border-radius: 10px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: #2196F3;
+            border-radius: 10px;
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .result {
+            margin-top: 15px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .error {
+            color: #f44336;
+        }
+
+        .normal {
+            color: #4caf50;
+        }
+
+        footer {
+            background: #fff;
+            padding: 20px;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: #2196F3;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        .footer-links a:hover {
+            color: #1976D2;
+        }
+
+        .footer-divider {
+            color: #ccc;
+        }
+
+        .hint {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .scores {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        @media (max-width: 600px) {
+            .header {
+                text-align: center;
+            }
+
+            .lang-switch {
+                justify-content: center;
+            }
+
+            .main-content {
+                margin: 10px 0;
+            }
+
+            .footer-links {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .footer-divider {
+                display: none;
+            }
+
+            .upload-zone {
+                width: 100%;
+                max-width: 280px;
+                height: 180px;
+            }
+
+            h1 {
+                font-size: 1.5em;
+            }
+
+            h2 {
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <div class="lang-switch">
+            <button onclick="changeLang('zh')" class="active">中文</button>
+            <button onclick="changeLang('en')">English</button>
+            <button onclick="changeLang('ja')">日本語</button>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="container">
+            <h1>NSFW 文件检测</h1>
+            <h2>支持图像，PDF，视频文件。</h2>
+            <div class="upload-zone" id="dropZone">
+                <div id="dropText">点击或拖拽文件到此处上传</div>
+                <input type="file" id="fileInput">
+                <div class="progress-bar" id="progressBar">
+                    <div class="progress-bar-fill" id="progressBarFill"></div>
+                </div>
+                <div class="result" id="result"></div>
+                <div class="scores" id="scores"></div>
+            </div>
+            <div class="hint">您上传的文件不会被保留，分析结束立刻删除</div>
+        </div>
+    </div>
+
+    <footer>
+        <div class="footer-links">
+            <a href="https://github.com/tmplink/nsfw_detector" target="_blank">Github</a>
+            <span class="footer-divider">|</span>
+            <a href="https://www.vx.link" target="_blank">Power by VnetLink</a>
+        </div>
+    </footer>
+
+    <script>
+        const translations = {
+            zh: {
+                title: 'NSFW 文件检测',
+                subtitle: '支持图像，PDF，视频文件，以及压缩包',
+                dropText: '点击或拖拽文件到此处上传',
+                normal: '正常文件',
+                nsfw: 'NSFW!',
+                error: '无法处理的文件',
+                uploadError: '上传失败',
+                parseError: '解析响应失败',
+                processing: '正在处理数据...',
+                privacy: '您上传的文件不会被保留，分析结束立刻删除',
+                scores: '评分 - NSFW: {nsfw}, Normal: {normal}'
+            },
+            en: {
+                title: 'NSFW File Detection',
+                subtitle: 'Supports images, PDFs, video files, and compressed files',
+                dropText: 'Click or drag file here to upload',
+                normal: 'Normal File',
+                nsfw: 'NSFW!',
+                error: 'Unable to process file',
+                uploadError: 'Upload failed',
+                parseError: 'Failed to parse response',
+                processing: 'Processing data...',
+                privacy: 'Your uploaded files will not be retained and will be deleted immediately after analysis',
+                scores: 'Scores - NSFW: {nsfw}, Normal: {normal}'
+            },
+            ja: {
+                title: 'NSFWファイル検出',
+                subtitle: '画像、PDF、動画ファイル、圧縮ファイルに対応',
+                dropText: 'ここをクリックまたはファイルをドラッグしてアップロード',
+                normal: '正常なファイル',
+                nsfw: 'NSFW!',
+                error: '処理できないファイル',
+                uploadError: 'アップロード失敗',
+                parseError: '応答の解析に失敗しました',
+                processing: 'データを処理中...',
+                privacy: 'アップロードされたファイルは保存されず、分析後にすぐに削除されます',
+                scores: 'スコア - NSFW: {nsfw}, Normal: {normal}'
+            }
+        };
+
+        function changeLang(lang) {
+            document.querySelector('html').setAttribute('lang', lang);
+            document.querySelector('h1').textContent = translations[lang].title;
+            document.querySelector('h2').textContent = translations[lang].subtitle;
+            document.querySelector('#dropText').textContent = translations[lang].dropText;
+            document.querySelector('.hint').textContent = translations[lang].privacy;
+
+            document.querySelectorAll('.lang-switch button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`button[onclick="changeLang('${lang}')"]`).classList.add('active');
+
+            currentLang = lang;
+        }
+
+        let currentLang = 'zh';
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const progressBar = document.getElementById('progressBar');
+        const progressBarFill = document.getElementById('progressBarFill');
+        const result = document.getElementById('result');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', handleFile);
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            uploadFile(file);
+        });
+
+        function handleFile(e) {
+            const file = e.target.files[0];
+            if (file) uploadFile(file);
+        }
+
+        function uploadFile(file) {
+            progressBar.style.display = 'block';
+            progressBarFill.style.width = '0%';
+            result.textContent = '';
+            scores.textContent = '';
+
+            const xhr = new XMLHttpRequest();
+            const formData = new FormData();
+            formData.append('file', file);
+
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percentage = (e.loaded / e.total) * 100;
+                    progressBarFill.style.width = percentage + '%';
+                }
+            });
+
+            xhr.onreadystatechange = () => {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        result.textContent = translations[currentLang].processing;
+                        const response = JSON.parse(xhr.responseText);
+                        try {
+                            if (response.status === "success") {
+                                const nsfw = response.result.nsfw.toFixed(4);
+                                const normal = response.result.normal.toFixed(4);
+
+                                if (response.result.nsfw > 0.8 || response.result.normal < 0.7) {
+                                    result.textContent = translations[currentLang].nsfw;
+                                    result.className = 'result error';
+                                } else {
+                                    result.textContent = translations[currentLang].normal;
+                                    result.className = 'result normal';
+                                }
+
+                                scores.textContent = translations[currentLang].scores
+                                    .replace('{nsfw}', nsfw)
+                                    .replace('{normal}', normal);
+                            } else {
+                                result.textContent = response.message;
+                                result.className = 'result error';
+                            }
+                        } catch (e) {
+                            result.textContent = response.message;
+                            result.className = 'result error';
+                        }
+                    } else {
+                        const response = JSON.parse(xhr.responseText);
+                        result.textContent = response.message;
+                        result.className = 'result error';
+                    }
+                }
+            };
+
+            xhr.open('POST', 'check', true);
+            xhr.send(formData);
+        }
+    </script>
+</body>
+
+</html>

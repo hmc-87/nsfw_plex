@@ -31,7 +31,7 @@ This detector supports checking the following file types:
 * ✅ Images (supported)
 * ✅ PDF files (supported)
 * ✅ Videos (supported)
-* ⏳ Files in compressed packages (planned)
+* ✅ Files in compressed packages (supported)
 
 ## Quick Start
 
@@ -46,15 +46,16 @@ Supported architectures: `x86_64`, `ARM64`.
 ### Use the API for Content Checking
 
 ```bash
-# Detect images
+# Detection
 curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
-# Detect PDF files
-curl -X POST -F "file=@/path/to/file.pdf" http://localhost:3333/pdf
-# Detect video files
-curl -X POST -F "file=@/path/to/file.mp4" http://localhost:3333/video
 ```
 
+### Use the Built-in Web Interface for Detection
+
+Visit: [http://localhost:3333](http://localhost:3333)
+
 ## Public API
+
 
 You can use the public API service provided by vx.link.
 

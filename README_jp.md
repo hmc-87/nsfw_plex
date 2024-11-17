@@ -28,7 +28,7 @@
 * ✅ 画像（対応済み）
 * ✅ PDF（対応済み）
 * ✅ 動画（対応済み）
-* ⏳ 圧縮ファイル内のファイル（対応予定）
+* ✅ 圧縮ファイル内のファイル（対応済み）
 
 ## クイックスタート
 
@@ -43,20 +43,20 @@ docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ### API を使用したコンテンツ確認
 
 ```bash
-# 画像の検出
+# 検出
 curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
-# PDFの検出
-curl -X POST -F "file=@/path/to/file.pdf" http://localhost:3333/pdf
-# 检测视频文件
-curl -X POST -F "file=@/path/to/file.mp4" http://localhost:3333/video
 ```
+
+### Web インターフェースを使用した検出
+
+アクセス先：[http://localhost:3333](http://localhost:3333)
 
 ## パブリック API
 
 vx.link が提供する公開 API サービスをご利用いただけます。
 
 ```bash
-# ファイルの検出、自動的にファイルタイプを識別します
+# 検出
 curl -X POST -F "file=@/path/to/image.jpg" https://vx.link/public/nsfw
 ```
 

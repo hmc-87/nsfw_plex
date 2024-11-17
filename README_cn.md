@@ -29,7 +29,7 @@
 * ✅ 图片（已支持）
 * ✅ PDF 文件（已支持）
 * ✅ 视频（已支持）
-* ⏳ 压缩包中的文件（计划）
+* ✅ 压缩包中的文件（已支持）
 
 ## 快速开始
 
@@ -44,13 +44,12 @@ docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ### 使用 API 进行内容检查
 
 ```bash
-# 检测图片
+# 检测
 curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
-# 检测 PDF 文件
-curl -X POST -F "file=@/path/to/file.pdf" http://localhost:3333/pdf
-# 检测视频文件
-curl -X POST -F "file=@/path/to/file.mp4" http://localhost:3333/video
-```
+
+### 使用内置的 Web 界面进行检测
+
+访问地址：[http://localhost:3333](http://localhost:3333)
 
 ## 公共 API
 

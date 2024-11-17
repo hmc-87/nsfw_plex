@@ -1,25 +1,24 @@
 # utils.py
 import zipfile
-import py7zr
 import rarfile
 import gzip
 import io
 import os
 import logging
 import tempfile
+import subprocess
+import shutil
 from pathlib import Path
 from config import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
 class ArchiveHandler:
-    """统一的压缩文件处理类"""
-    
     def __init__(self, filepath):
         """
-        初始化压缩文件处理器
+        初始化归档文件处理器
         Args:
-            filepath: 压缩文件路径
+            filepath: 归档文件路径
         """
         self.filepath = filepath
         self.archive = None
@@ -27,16 +26,16 @@ class ArchiveHandler:
         
     def _determine_type(self):
         """
-        确定压缩包类型
+        确定归档文件类型
         Returns:
-            str: 压缩文件类型 ('zip', 'rar', '7z', 'gz' 或 None)
+            str: 文件类型 ('zip', 'rar', '7z', 'gz' 或 None)
         """
         try:
             if zipfile.is_zipfile(self.filepath):
                 return 'zip'
             elif rarfile.is_rarfile(self.filepath):
                 return 'rar'
-            elif py7zr.is_7zfile(self.filepath):
+            elif self._is_7z_file(self.filepath):
                 return '7z'
             elif self._is_valid_gzip(self.filepath):
                 return 'gz'
@@ -45,9 +44,29 @@ class ArchiveHandler:
             logger.error(f"文件类型检测失败: {str(e)}")
             return None
 
+    def _is_7z_file(self, filepath):
+        """
+        检查是否为7z文件
+        Args:
+            filepath: 文件路径
+        Returns:
+            bool: 是否为7z文件
+        """
+        try:
+            result = subprocess.run(
+                ['7z', 'l', filepath], 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE,
+                encoding='utf-8'
+            )
+            return result.returncode == 0
+        except Exception as e:
+            logger.error(f"7z文件检测失败: {str(e)}")
+            return False
+
     def _is_valid_gzip(self, filepath):
         """
-        验证是否为有效的gzip文件
+        检查是否为有效的gzip文件
         Args:
             filepath: 文件路径
         Returns:
@@ -62,11 +81,9 @@ class ArchiveHandler:
 
     def __enter__(self):
         """
-        打开压缩文件
+        上下文管理器入口
         Returns:
-            ArchiveHandler: 自身实例
-        Raises:
-            Exception: 打开文件失败时抛出异常
+            ArchiveHandler: 处理器实例
         """
         try:
             if self.type == 'zip':
@@ -80,9 +97,8 @@ class ArchiveHandler:
                     raise Exception("RAR文件有密码保护")
                     
             elif self.type == '7z':
-                self.archive = py7zr.SevenZipFile(self.filepath)
-                if self.archive.needs_password():
-                    raise Exception("7z文件有密码保护")
+                # 7z文件不需要持续打开
+                pass
                     
             elif self.type == 'gz':
                 self.archive = gzip.GzipFile(self.filepath)
@@ -97,35 +113,54 @@ class ArchiveHandler:
             raise Exception(f"打开压缩文件失败: {str(e)}")
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """关闭压缩文件"""
+        """上下文管理器退出"""
         if self.archive:
             self.archive.close()
 
     def list_files(self):
         """
-        获取压缩包中的文件列表
+        列出归档中的所有文件
         Returns:
             list: 文件名列表
         """
         try:
             if self.type == 'zip':
-                # 过滤掉目录项
                 return [f for f in self.archive.namelist() if not f.endswith('/')]
                 
             elif self.type == 'rar':
-                # 过滤掉目录项
                 return [f.filename for f in self.archive.infolist() if not f.is_dir()]
                 
             elif self.type == '7z':
-                # 获取所有文件信息并过滤目录
-                file_list = []
-                for filename, info in self.archive.files.items():
-                    if not info.is_directory:
-                        file_list.append(filename)
-                return file_list
+                result = subprocess.run(
+                    ['7z', 'l', '-slt', self.filepath], 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.PIPE,
+                    encoding='utf-8'
+                )
+                
+                if result.returncode != 0:
+                    raise Exception("无法列出7z文件内容")
+                
+                files = []
+                current_file = None
+                is_directory = False
+                
+                for line in result.stdout.split('\n'):
+                    line = line.strip()
+                    if line.startswith('Path = '):
+                        current_file = line[7:]  # 去掉 "Path = "
+                    elif line.startswith('Attributes = D'):
+                        is_directory = True
+                    elif line == '':  # 空行表示一个文件信息块的结束
+                        if current_file and not is_directory:
+                            files.append(current_file)
+                        current_file = None
+                        is_directory = False
+                
+                logger.info(f"找到以下文件: {files}")
+                return files
                 
             elif self.type == 'gz':
-                # gz文件只包含一个文件，使用原始文件名（去掉.gz后缀）
                 base_name = os.path.basename(self.filepath)
                 if base_name.endswith('.gz'):
                     return [base_name[:-3]]
@@ -153,10 +188,29 @@ class ArchiveHandler:
                 return self.archive.getinfo(filename).file_size
                 
             elif self.type == '7z':
-                return self.archive.files[filename].uncompressed
+                result = subprocess.run(
+                    ['7z', 'l', '-slt', self.filepath, filename], 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.PIPE,
+                    encoding='utf-8'
+                )
+                
+                if result.returncode != 0:
+                    return 0
+                
+                size = 0
+                for line in result.stdout.split('\n'):
+                    line = line.strip()
+                    if line.startswith('Size = '):
+                        try:
+                            size = int(line[7:])  # 去掉 "Size = "
+                            break
+                        except ValueError:
+                            continue
+                
+                return size
                 
             elif self.type == 'gz':
-                # 对于gz文件，返回解压后的大小
                 return self.archive.size
                 
             return 0
@@ -171,9 +225,7 @@ class ArchiveHandler:
         Args:
             filename: 要提取的文件名
         Returns:
-            bytes: 文件内容的字节数据
-        Raises:
-            Exception: 提取失败时抛出异常
+            bytes: 文件内容
         """
         try:
             if self.type == 'zip':
@@ -183,35 +235,41 @@ class ArchiveHandler:
                 return self.archive.read(filename)
                 
             elif self.type == '7z':
-                # 专门处理7z文件的提取
-                file_data = None
-                target_file = self.archive.files[filename]
+                # 创建临时文件以存储提取的文件
+                with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                    temp_path = temp_file.name
                 
-                # 如果是单个文件，直接提取
-                if len(self.archive.files) == 1:
-                    file_data = next(iter(self.archive.read([filename]).values())).read()
-                else:
-                    # 如果是多个文件，使用临时目录提取单个文件
-                    with tempfile.TemporaryDirectory() as temp_dir:
-                        self.archive.extract(temp_dir, [filename])
-                        file_path = os.path.join(temp_dir, filename)
-                        with open(file_path, 'rb') as f:
-                            file_data = f.read()
-                            
-                if file_data is None:
-                    raise Exception(f"无法提取文件: {filename}")
-                return file_data
+                try:
+                    # 提取文件到临时文件
+                    cmd = ['7z', 'e', self.filepath, filename, f'-so']
+                    result = subprocess.run(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        check=True
+                    )
+                    
+                    # 返回文件内容
+                    return result.stdout
+                    
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"7z命令执行失败: {e.stderr.decode('utf-8', errors='ignore')}")
+                    raise Exception("文件提取失败")
+                finally:
+                    # 清理临时文件
+                    try:
+                        os.unlink(temp_path)
+                    except Exception as e:
+                        logger.error(f"清理临时文件失败: {str(e)}")
                 
             elif self.type == 'gz':
-                # 对于gz文件，读取全部内容
                 return self.archive.read()
                 
             raise Exception("不支持的压缩格式")
             
-        except KeyError:
-            raise Exception(f"文件不存在: {filename}")
         except Exception as e:
             raise Exception(f"提取文件失败: {str(e)}")
+
 
 def get_file_extension(filename):
     """获取文件扩展名（小写）"""
@@ -223,19 +281,11 @@ def can_process_file(filename):
     return ext in IMAGE_EXTENSIONS or ext == '.pdf' or ext in VIDEO_EXTENSIONS
 
 def sort_files_by_priority(handler, files):
-    """
-    按优先级对文件进行排序
-    Args:
-        handler: ArchiveHandler实例
-        files: 文件名列表
-    Returns:
-        list: 排序后的文件列表
-    """
+    """按优先级对文件进行排序"""
     def get_priority_and_size(filename):
         ext = get_file_extension(filename)
         size = handler.get_file_info(filename)
         
-        # 设置优先级：图片 > PDF > 视频
         if ext in IMAGE_EXTENSIONS:
             priority = 0
         elif ext == '.pdf':

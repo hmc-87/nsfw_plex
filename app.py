@@ -54,10 +54,19 @@ def detect_file_type(file_stream):
         'video/x-ms-wmv': '.wmv',
         'video/webm': '.webm',
         'application/x-rar-compressed': '.rar',
+        'application/x-rar': '.rar',  # 添加另一种常见的RAR MIME类型
+        'application/vnd.rar': '.rar',  # 添加另一种标准的RAR MIME类型
         'application/zip': '.zip',
         'application/x-7z-compressed': '.7z',
         'application/gzip': '.gz'
     }
+    
+    # 如果MIME类型未匹配，尝试通过文件头部进行二次检查
+    if mime_type not in mime_to_ext:
+        # RAR文件的标志 (Rar!\x1a\x07\x00)
+        if header.startswith(b'Rar!\x1a\x07\x00'):
+            return 'application/x-rar', '.rar'
+        # 可以添加其他特殊文件类型的检测
     
     return mime_type, mime_to_ext.get(mime_type)
 
@@ -68,13 +77,14 @@ def process_file_by_type(file_stream, detected_type, original_filename):
     # 如果有原始文件扩展名，优先使用
     if original_filename and '.' in original_filename:
         original_ext = os.path.splitext(original_filename)[1].lower()
-        if original_ext in IMAGE_EXTENSIONS or original_ext == '.pdf' or original_ext in VIDEO_EXTENSIONS:
+        if original_ext in IMAGE_EXTENSIONS or original_ext == '.pdf' or original_ext in VIDEO_EXTENSIONS or original_ext in {'.rar', '.zip', '.7z', '.gz'}:
             ext = original_ext
     
     if not ext:
+        logger.error(f"不支持的文件类型: {mime_type}")
         return {
             'status': 'error',
-            'message': 'Unsupported file type'
+            'message': f'Unsupported file type: {mime_type}'
         }, 400
     
     try:
@@ -126,12 +136,30 @@ def process_file_by_type(file_stream, detected_type, original_filename):
                     os.unlink(temp_file.name)
                     
         elif ext in {'.zip', '.rar', '.7z', '.gz'}:
-            return process_archive(file_stream, original_filename)
-            
+            # 为压缩文件创建临时文件
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+            try:
+                # 读取文件内容并写入临时文件
+                file_content = file_stream.read()
+                with open(temp_file.name, 'wb') as f:
+                    f.write(file_content)
+                
+                # 检查文件大小
+                if os.path.getsize(temp_file.name) > MAX_FILE_SIZE:
+                    return {
+                        'status': 'error',
+                        'message': 'File too large'
+                    }, 400
+                
+                return process_archive(temp_file.name, original_filename)
+            finally:
+                if os.path.exists(temp_file.name):
+                    os.unlink(temp_file.name)
         else:
+            logger.error(f"不支持的文件扩展名: {ext}")
             return {
                 'status': 'error',
-                'message': 'Unsupported file type'
+                'message': f'Unsupported file extension: {ext}'
             }, 400
             
     except Exception as e:

@@ -368,7 +368,7 @@
                                 const nsfw = response.result.nsfw.toFixed(4);
                                 const normal = response.result.normal.toFixed(4);
 
-                                if (response.result.nsfw > 0.8 || response.result.normal < 0.7) {
+                                if (response.result.nsfw > 0.8) {
                                     result.textContent = translations[currentLang].nsfw;
                                     result.className = 'result error';
                                 } else {

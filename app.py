@@ -19,7 +19,7 @@ app = Flask(__name__)
 # 文件上传配置
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE  # 从config导入的最大文件大小
 app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()  # 使用系统临时目录
-app.request_class.max_form_memory_size = 0  # 强制所有上传写入磁盘
+app.request_class.max_form_memory_size = 128 * 1024 * 1024  # 强制所有上传写入磁盘
 
 # Load index.html content
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))

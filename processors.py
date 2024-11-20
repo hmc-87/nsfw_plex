@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils import ArchiveHandler, can_process_file, sort_files_by_priority
 from config import (
     MAX_FILE_SIZE, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, 
-    NSFW_THRESHOLD, FFMPEG_MAX_FRAMES, FFMPEG_TIMEOUT,MAX_INTERVAL_SECONDS
+    NSFW_THRESHOLD, FFMPEG_MAX_FRAMES, FFMPEG_TIMEOUT,ARCHIVE_EXTENSIONS
 )
 
 # 配置日志
@@ -216,7 +216,7 @@ class VideoProcessor:
             return None, None
 
     def process(self):
-        """处理视频文件"""
+        """按顺序处理视频文件"""
         try:
             # 获取视频信息
             self._get_video_info()
@@ -227,21 +227,15 @@ class VideoProcessor:
                 logger.warning("未能提取到任何关键帧")
                 return None
             
-            # 使用线程池并行处理帧
+            # 按顺序处理帧
             last_result = None
-            with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-                future_to_frame = {
-                    executor.submit(self._process_frame, frame): frame 
-                    for frame in frame_files
-                }
-                
-                for future in as_completed(future_to_frame):
-                    frame_num, result = future.result()
-                    if result is not None:
-                        last_result = result
-                        if result['nsfw'] > NSFW_THRESHOLD:
-                            logger.info(f"在帧 {frame_num} 发现匹配内容")
-                            return result
+            for frame in sorted(frame_files):
+                frame_num, result = self._process_frame(frame)
+                if result is not None:
+                    last_result = result
+                    if result['nsfw'] > NSFW_THRESHOLD:
+                        logger.info(f"在帧 {frame_num} 发现匹配内容")
+                        return result
             
             return last_result
             
@@ -321,13 +315,28 @@ def process_video_file(video_path):
     processor = VideoProcessor(video_path)
     return processor.process()
 
-def process_archive(filepath, filename):
-    """处理压缩文件"""
+def process_archive(filepath, filename, depth=0, max_depth=100):
+    """处理压缩文件，支持嵌套压缩包
+    
+    Args:
+        filepath: 压缩文件路径
+        filename: 原始文件名
+        depth: 当前递归深度
+        max_depth: 最大递归深度，防止过深的嵌套
+    """
     temp_dir = None
     try:
+        # 检查递归深度
+        if depth > max_depth:
+            logger.warning(f"达到最大递归深度 {max_depth}")
+            return {
+                'status': 'error',
+                'message': f'Maximum archive nesting depth ({max_depth}) exceeded'
+            }, 400
+
         # 创建临时目录
         temp_dir = tempfile.mkdtemp()
-        logger.info(f"处理压缩文件: {filename}, 临时文件路径: {filepath}")
+        logger.info(f"处理压缩文件: {filename}, 深度: {depth}, 临时文件路径: {filepath}")
         
         # 检查文件大小
         file_size = os.path.getsize(filepath)
@@ -340,56 +349,49 @@ def process_archive(filepath, filename):
         with ArchiveHandler(filepath) as handler:
             # 获取文件列表
             files = handler.list_files()
-            processable_files = [f for f in files if can_process_file(f)]
+            # 分离可直接处理的文件和嵌套压缩包
+            processable_files = []
+            nested_archives = []
             
-            if not processable_files:
+            for f in files:
+                ext = os.path.splitext(f)[1].lower()
+                if ext in ARCHIVE_EXTENSIONS:
+                    nested_archives.append(f)
+                elif can_process_file(f):
+                    processable_files.append(f)
+            
+            if not processable_files and not nested_archives:
                 return {
                     'status': 'error',
                     'message': 'No processable files found in archive'
                 }, 400
 
-            # 按优先级和大小排序
-            sorted_files = sort_files_by_priority(handler, processable_files)
-            
-            # 逐个处理文件
-            last_result = None
-            matched_content = None
-            for inner_filename in sorted_files:
-                try:
-                    content = handler.extract_file(inner_filename)
-                    ext = os.path.splitext(inner_filename)[1].lower()
-                    
-                    if ext in IMAGE_EXTENSIONS:
-                        img = Image.open(io.BytesIO(content))
-                        result = process_image(img)
-                        last_result = {
-                            'matched_file': inner_filename,
-                            'result': result
-                        }
+            # 先处理可直接处理的文件
+            if processable_files:
+                sorted_files = sort_files_by_priority(handler, processable_files)
+                last_result = None
+                matched_content = None
+                
+                for inner_filename in sorted_files:
+                    try:
+                        content = handler.extract_file(inner_filename)
+                        ext = os.path.splitext(inner_filename)[1].lower()
                         
-                        if result['nsfw'] > NSFW_THRESHOLD:
-                            matched_content = last_result
-                            break
-                    
-                    elif ext == '.pdf':
-                        result = process_pdf_file(content)
-                        if result:  # 只在有结果时更新
+                        if ext in IMAGE_EXTENSIONS:
+                            img = Image.open(io.BytesIO(content))
+                            result = process_image(img)
                             last_result = {
                                 'matched_file': inner_filename,
                                 'result': result
                             }
+                            
                             if result['nsfw'] > NSFW_THRESHOLD:
                                 matched_content = last_result
                                 break
-                    
-                    elif ext in VIDEO_EXTENSIONS:
-                        temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-                        try:
-                            with open(temp_video.name, 'wb') as f:
-                                f.write(content)
-                            
-                            result = process_video_file(temp_video.name)
-                            if result:  # 只在有结果时更新
+                        
+                        elif ext == '.pdf':
+                            result = process_pdf_file(content)
+                            if result:
                                 last_result = {
                                     'matched_file': inner_filename,
                                     'result': result
@@ -397,34 +399,83 @@ def process_archive(filepath, filename):
                                 if result['nsfw'] > NSFW_THRESHOLD:
                                     matched_content = last_result
                                     break
-                        finally:
-                            if os.path.exists(temp_video.name):
-                                os.unlink(temp_video.name)
+                        
+                        elif ext in VIDEO_EXTENSIONS:
+                            temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+                            try:
+                                with open(temp_video.name, 'wb') as f:
+                                    f.write(content)
                                 
-                except Exception as e:
-                    logger.error(f"处理文件 {inner_filename} 时出错: {str(e)}")
-                    continue
+                                result = process_video_file(temp_video.name)
+                                if result:
+                                    last_result = {
+                                        'matched_file': inner_filename,
+                                        'result': result
+                                    }
+                                    if result['nsfw'] > NSFW_THRESHOLD:
+                                        matched_content = last_result
+                                        break
+                            finally:
+                                if os.path.exists(temp_video.name):
+                                    os.unlink(temp_video.name)
+                                    
+                    except Exception as e:
+                        logger.error(f"处理文件 {inner_filename} 时出错: {str(e)}")
+                        continue
 
-            # 返回结果
-            if matched_content:
-                logger.info(f"在压缩包 {filename} 中发现匹配内容: {matched_content['matched_file']}")
-                return {
-                    'status': 'success',
-                    'filename': filename,
-                    'result': matched_content['result']
-                }
-            elif last_result:
-                logger.info(f"处理压缩包 {filename} 完成,最后处理的文件: {last_result['matched_file']}")
+                if matched_content:
+                    logger.info(f"在压缩包 {filename} 中发现匹配内容: {matched_content['matched_file']}")
+                    return {
+                        'status': 'success',
+                        'filename': filename,
+                        'result': matched_content['result']
+                    }
+
+            # 处理嵌套的压缩包
+            for nested_archive in nested_archives:
+                try:
+                    temp_nested = tempfile.NamedTemporaryFile(delete=False)
+                    content = handler.extract_file(nested_archive)
+                    
+                    with open(temp_nested.name, 'wb') as f:
+                        f.write(content)
+                    
+                    # 递归处理嵌套压缩包
+                    nested_result = process_archive(
+                        temp_nested.name,
+                        nested_archive,
+                        depth + 1,
+                        max_depth
+                    )
+                    
+                    # 如果找到匹配内容，直接返回
+                    if isinstance(nested_result, tuple):
+                        status_code = nested_result[1]
+                        if status_code == 200:
+                            return nested_result[0]
+                    elif nested_result.get('status') == 'success':
+                        return nested_result
+                        
+                except Exception as e:
+                    logger.error(f"处理嵌套压缩包 {nested_archive} 时出错: {str(e)}")
+                    continue
+                finally:
+                    if os.path.exists(temp_nested.name):
+                        os.unlink(temp_nested.name)
+
+            # 如果所有文件都处理完还没有返回，返回最后一个结果
+            if last_result:
+                logger.info(f"处理压缩包 {filename} 完成，最后处理的文件: {last_result['matched_file']}")
                 return {
                     'status': 'success',
                     'filename': filename,
                     'result': last_result['result']
                 }
-            else:
-                return {
-                    'status': 'error',
-                    'message': 'No files could be processed successfully'
-                }, 400
+            
+            return {
+                'status': 'error',
+                'message': 'No files could be processed successfully'
+            }, 400
 
     except Exception as e:
         logger.error(f"处理压缩包时出错: {str(e)}")

@@ -7,7 +7,7 @@ import logging
 import magic
 from pathlib import Path
 from werkzeug.utils import secure_filename
-from config import MAX_FILE_SIZE, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+from config import MAX_FILE_SIZE, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, MIME_TO_EXT
 from utils import ArchiveHandler, can_process_file, sort_files_by_priority
 from processors import process_image, process_pdf_file, process_video_file, process_archive
 
@@ -56,35 +56,13 @@ def detect_file_type(file_path):
         mime = magic.Magic(mime=True)
         mime_type = mime.from_buffer(header)
         
-        # 基于 MIME 类型映射文件扩展名
-        mime_to_ext = {
-            'image/jpeg': '.jpg',
-            'image/png': '.png',
-            'image/gif': '.gif',
-            'image/webp': '.webp',
-            'image/bmp': '.bmp',
-            'application/pdf': '.pdf',
-            'video/mp4': '.mp4',
-            'video/x-msvideo': '.avi',
-            'video/x-matroska': '.mkv',
-            'video/quicktime': '.mov',
-            'video/x-ms-wmv': '.wmv',
-            'video/webm': '.webm',
-            'application/x-rar-compressed': '.rar',
-            'application/x-rar': '.rar',
-            'application/vnd.rar': '.rar',
-            'application/zip': '.zip',
-            'application/x-7z-compressed': '.7z',
-            'application/gzip': '.gz'
-        }
-        
         # 对于RAR文件的特殊处理
-        if mime_type not in mime_to_ext:
+        if mime_type not in MIME_TO_EXT:
             with open(file_path, 'rb') as f:
                 if f.read(7).startswith(b'Rar!\x1a\x07'):
                     return 'application/x-rar', '.rar'
         
-        return mime_type, mime_to_ext.get(mime_type)
+        return mime_type, MIME_TO_EXT.get(mime_type)
         
     except Exception as e:
         logger.error(f"文件类型检测失败: {str(e)}")

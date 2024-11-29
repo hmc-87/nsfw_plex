@@ -55,6 +55,9 @@ Supported architectures: `x86_64`, `ARM64`.
 ```bash
 # Detection
 curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
+
+# Check Local Files
+curl -X POST -F "path=/path/to/image.jpg" http://localhost:3333/check
 ```
 
 ### Use the Built-in Web Interface for Detection
@@ -68,9 +71,6 @@ You can use the public API service provided by vx.link.
 ```bash
 # Detect files, automatically recognize file types
 curl -X POST -F "file=@/path/to/image.jpg" https://vx.link/public/nsfw
-
-# Check Local Files
-curl -X POST -F "path=/path/to/image.jpg" http://localhost:3333/check
 ```
 
 * Your submitted images will not be saved.

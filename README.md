@@ -41,6 +41,13 @@ This detector supports checking the following file types:
 docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ```
 
+To check files in local paths on the server, mount the path to the container.
+It is recommended to keep the mounted path consistent with the path inside the container to avoid confusion.
+
+```bash
+docker run -d -p 3333:3333 -v /path/to/files:/path/to/files --name nsfw-detector vxlink/nsfw_detector:latest
+```
+
 Supported architectures: `x86_64`, `ARM64`.
 
 ### Use the API for Content Checking
@@ -56,12 +63,14 @@ Visit: [http://localhost:3333](http://localhost:3333)
 
 ## Public API
 
-
 You can use the public API service provided by vx.link.
 
 ```bash
 # Detect files, automatically recognize file types
 curl -X POST -F "file=@/path/to/image.jpg" https://vx.link/public/nsfw
+
+# Check Local Files
+curl -X POST -F "path=/path/to/image.jpg" http://localhost:3333/check
 ```
 
 * Your submitted images will not be saved.

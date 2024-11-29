@@ -3,7 +3,7 @@ set -e
 
 # 默认配置值
 IMAGE_NAME="vxlink/nsfw_detector"
-VERSION="v1.4"
+VERSION="v1.5"
 PUSH="false"
 CACHE_DIR="${HOME}/.docker/nsfw_detector_cache"
 CACHE_FROM=""

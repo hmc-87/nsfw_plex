@@ -38,6 +38,15 @@
 docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ```
 
+サーバーのローカルパスにあるファイルを直接チェックする場合は、パスをコンテナにマウントしてください。
+混乱を避けるため、通常はマウントパスをコンテナ内のパスと同じにすることをお勧めします。
+
+```bash
+docker run -d -p 3333:3333 -v /path/to/files:/path/to/files --name nsfw-detector vxlink/nsfw_detector:latest
+```
+
+
+
 対応システムアーキテクチャ：`x86_64`、`ARM64`。
 
 ### API を使用したコンテンツ確認
@@ -45,6 +54,10 @@ docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ```bash
 # 検出
 curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
+
+
+# ファイルパスを指定して検出
+curl -X POST -F "path=/path/to/image.jpg" http://localhost:3333/check
 ```
 
 ### Web インターフェースを使用した検出

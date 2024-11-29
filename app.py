@@ -153,7 +153,56 @@ def check_file():
     """统一的文件检查入口点"""
     temp_handler = TempFileHandler()
     try:
-        if 'file' not in request.files:
+        # 获取请求中的 path 参数
+        path = request.form.get('path')
+        
+        if path:
+            # 处理文件路径
+            abs_path = os.path.abspath(path)
+            app_dir = os.path.abspath(os.path.dirname(__file__))
+            
+            # 安全检查：确保路径不指向程序目录
+            if abs_path.startswith(app_dir):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Invalid path: cannot access program directory'
+                }), 400
+                
+            # 检查文件是否存在
+            if not os.path.exists(abs_path):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'File not found'
+                }), 404
+                
+            # 检查是否是文件
+            if not os.path.isfile(abs_path):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Path is not a file'
+                }), 400
+                
+            # 检查文件大小
+            file_size = os.path.getsize(abs_path)
+            if file_size > MAX_FILE_SIZE:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'File too large'
+                }), 400
+                
+            # 获取原始文件名
+            filename = os.path.basename(abs_path)
+            
+            # 检测文件类型
+            detected_type = detect_file_type(abs_path)
+            logger.info(f"检测到文件类型: {detected_type}")
+            
+            # 处理文件
+            result = process_file_by_type(abs_path, detected_type, filename, temp_handler)
+            return jsonify(result) if isinstance(result, dict) else jsonify(result[0]), result[1] if isinstance(result, tuple) else 200
+            
+        # 文件上传处理逻辑
+        elif 'file' not in request.files:
             return jsonify({
                 'status': 'error',
                 'message': 'No file found'
@@ -166,15 +215,12 @@ def check_file():
                 'message': 'No file selected'
             }), 400
 
-        # 获取安全的文件名
         filename = secure_filename(file.filename)
         logger.info(f"接收到文件: {filename}")
         
-        # 创建临时文件
         temp_file = temp_handler.create_temp_file()
         file.save(temp_file.name)
         
-        # 检查文件大小
         file_size = os.path.getsize(temp_file.name)
         if file_size > MAX_FILE_SIZE:
             return jsonify({
@@ -182,11 +228,9 @@ def check_file():
                 'message': 'File too large'
             }), 400
         
-        # 检测文件类型
         detected_type = detect_file_type(temp_file.name)
         logger.info(f"检测到文件类型: {detected_type}")
         
-        # 处理文件
         result = process_file_by_type(temp_file.name, detected_type, filename, temp_handler)
         return jsonify(result) if isinstance(result, dict) else jsonify(result[0]), result[1] if isinstance(result, tuple) else 200
 

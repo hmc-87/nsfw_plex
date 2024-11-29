@@ -39,6 +39,13 @@
 docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ```
 
+如果要直接检查服务器本地路径的文件，请将路径挂载到容器中。
+通常推荐挂载路径与容器内路径一致，以避免混淆。
+
+```bash
+docker run -d -p 3333:3333 -v /path/to/files:/path/to/files --name nsfw-detector vxlink/nsfw_detector:latest
+```
+
 支持的系统架构：`x86_64`、`ARM64`。
 
 ### 使用 API 进行内容检查
@@ -46,6 +53,10 @@ docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
 ```bash
 # 检测
 curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
+
+# 检查本地的文件
+curl -X POST -F "path=/path/to/image.jpg" http://localhost:3333/check
+```
 
 ### 使用内置的 Web 界面进行检测
 

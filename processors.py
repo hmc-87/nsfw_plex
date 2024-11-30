@@ -326,6 +326,12 @@ def process_archive(filepath, filename, depth=0, max_depth=100):
     """
     temp_dir = None
     try:
+        # 确保 filename 正确编码
+        encoded_filename = filename  # 保存原始文件名
+        if isinstance(filename, bytes):
+            with ArchiveHandler(filepath) as temp_handler:
+                encoded_filename = temp_handler.__encode_filename(filename)
+                
         # 检查递归深度
         if depth > max_depth:
             logger.warning(f"达到最大递归深度 {max_depth}")
@@ -336,7 +342,7 @@ def process_archive(filepath, filename, depth=0, max_depth=100):
 
         # 创建临时目录
         temp_dir = tempfile.mkdtemp()
-        logger.info(f"处理压缩文件: {filename}, 深度: {depth}, 临时文件路径: {filepath}")
+        logger.info(f"处理压缩文件: {encoded_filename}, 深度: {depth}, 临时文件路径: {filepath}")
         
         # 检查文件大小
         file_size = os.path.getsize(filepath)
@@ -349,11 +355,16 @@ def process_archive(filepath, filename, depth=0, max_depth=100):
         with ArchiveHandler(filepath) as handler:
             # 获取文件列表
             files = handler.list_files()
+            
             # 分离可直接处理的文件和嵌套压缩包
             processable_files = []
             nested_archives = []
             
             for f in files:
+                # 确保文件名已正确编码
+                if isinstance(f, bytes):
+                    f = handler.__encode_filename(f)
+                    
                 ext = os.path.splitext(f)[1].lower()
                 if ext in ARCHIVE_EXTENSIONS:
                     nested_archives.append(f)
@@ -374,6 +385,10 @@ def process_archive(filepath, filename, depth=0, max_depth=100):
                 
                 for inner_filename in sorted_files:
                     try:
+                        # 确保内部文件名已正确编码
+                        if isinstance(inner_filename, bytes):
+                            inner_filename = handler.__encode_filename(inner_filename)
+                            
                         content = handler.extract_file(inner_filename)
                         ext = os.path.splitext(inner_filename)[1].lower()
                         
@@ -424,16 +439,20 @@ def process_archive(filepath, filename, depth=0, max_depth=100):
                         continue
 
                 if matched_content:
-                    logger.info(f"在压缩包 {filename} 中发现匹配内容: {matched_content['matched_file']}")
+                    logger.info(f"在压缩包 {encoded_filename} 中发现匹配内容: {matched_content['matched_file']}")
                     return {
                         'status': 'success',
-                        'filename': filename,
+                        'filename': encoded_filename,
                         'result': matched_content['result']
                     }
 
             # 处理嵌套的压缩包
             for nested_archive in nested_archives:
                 try:
+                    # 确保嵌套压缩包文件名已正确编码
+                    if isinstance(nested_archive, bytes):
+                        nested_archive = handler.__encode_filename(nested_archive)
+                        
                     temp_nested = tempfile.NamedTemporaryFile(delete=False)
                     content = handler.extract_file(nested_archive)
                     
@@ -465,10 +484,10 @@ def process_archive(filepath, filename, depth=0, max_depth=100):
 
             # 如果所有文件都处理完还没有返回，返回最后一个结果
             if last_result:
-                logger.info(f"处理压缩包 {filename} 完成，最后处理的文件: {last_result['matched_file']}")
+                logger.info(f"处理压缩包 {encoded_filename} 完成，最后处理的文件: {last_result['matched_file']}")
                 return {
                     'status': 'success',
-                    'filename': filename,
+                    'filename': encoded_filename,
                     'result': last_result['result']
                 }
             
@@ -483,7 +502,6 @@ def process_archive(filepath, filename, depth=0, max_depth=100):
             'status': 'error',
             'message': str(e)
         }, 500
-        
     finally:
         if temp_dir and os.path.exists(temp_dir):
             try:

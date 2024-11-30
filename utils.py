@@ -62,54 +62,45 @@ class ArchiveHandler:
         ext = Path(original_filename).suffix
         return f"{str(uuid.uuid4())}{ext}"
 
-    def __encode_filename(self, filename):
-        """文件名编码处理"""
-        if isinstance(filename, str):
-            return filename
-            
-        try:
-            decoded = filename.decode('utf-8')
-            return decoded
-        except UnicodeDecodeError as e:
-            return filename.decode('utf-8', errors='replace')
-
-    def _extract_rar_files(self, files_to_extract):
-        """只解压需要处理的RAR文件到临时目录"""
+    def _extract_rar_all(self):
+        """使用unrar命令行工具完整解压RAR文件"""
         if not self.temp_dir:
             self.temp_dir = tempfile.mkdtemp()
 
         try:
-            for filename in files_to_extract:
-                # 使用unrar命令行工具解压特定文件
-                extract_cmd = ['unrar', 'e', '-y', self.filepath, filename, self.temp_dir]
-                
-                result = subprocess.run(
-                    extract_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    encoding='utf-8'
-                )
-                
-                if result.returncode != 0:
-                    logger.warning(f"解压RAR文件 {filename} 失败: {result.stderr}")
-                    continue
+            # 使用unrar命令行工具解压
+            extract_cmd = ['unrar', 'x', '-y', self.filepath, self.temp_dir + os.sep]
+            result = subprocess.run(
+                extract_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                encoding='utf-8'
+            )
 
-                # 获取解压后的文件路径
-                original_path = os.path.join(self.temp_dir, os.path.basename(filename))
-                if os.path.exists(original_path):
-                    new_filename = self._generate_temp_filename(filename)
+            if result.returncode != 0:
+                raise Exception(f"RAR解压失败: {result.stderr}")
+
+            # 遍历解压目录，重命名文件并记录映射关系
+            for root, _, files in os.walk(self.temp_dir):
+                for filename in files:
+                    original_path = os.path.join(root, filename)
+                    relative_path = os.path.relpath(original_path, self.temp_dir)
+                    
+                    # 生成新的唯一文件名
+                    new_filename = str(uuid.uuid4()) + os.path.splitext(filename)[1]
                     new_path = os.path.join(self.temp_dir, new_filename)
-                    try:
-                        os.link(original_path, new_path)
-                    except OSError:
-                        shutil.copy2(original_path, new_path)
-                    self._extracted_files[filename] = new_path
-                    os.unlink(original_path)
+                    
+                    # 移动文件并记录映射
+                    os.rename(original_path, new_path)
+                    self._extracted_files[relative_path] = new_path
+
+            logger.info(f"成功解压 {len(self._extracted_files)} 个文件到临时目录")
+            return True
 
         except Exception as e:
-            logger.error(f"RAR文件解压失败: {str(e)}")
-            raise
-
+            logger.error(f"RAR完整解压失败: {str(e)}")
+            return False
+        
     def _extract_7z_files(self, files_to_extract):
         """只解压需要处理的7z文件到临时目录"""
         if not self.temp_dir:
@@ -117,8 +108,10 @@ class ArchiveHandler:
 
         try:
             for filename in files_to_extract:
+                # 为每个文件准备解压命令
                 extract_cmd = ['7z', 'e', self.filepath, '-o' + self.temp_dir, filename, '-y']
                 
+                # 执行解压
                 result = subprocess.run(
                     extract_cmd,
                     stdout=subprocess.PIPE,
@@ -130,19 +123,25 @@ class ArchiveHandler:
                     logger.warning(f"解压文件 {filename} 失败: {result.stderr}")
                     continue
 
+                # 获取解压后的文件路径
                 original_path = os.path.join(self.temp_dir, os.path.basename(filename))
                 if os.path.exists(original_path):
                     new_filename = self._generate_temp_filename(filename)
                     new_path = os.path.join(self.temp_dir, new_filename)
                     try:
+                        # 尝试创建硬链接
                         os.link(original_path, new_path)
                     except OSError:
+                        # 如果硬链接失败，则复制文件
                         shutil.copy2(original_path, new_path)
                     self._extracted_files[filename] = new_path
+                    # 删除原始文件
                     os.unlink(original_path)
 
         except Exception as e:
             logger.error(f"7z文件解压失败: {str(e)}")
+            if self.temp_dir and os.path.exists(self.temp_dir):
+                shutil.rmtree(self.temp_dir)
             raise
 
     def __enter__(self):
@@ -152,10 +151,12 @@ class ArchiveHandler:
                 if self.archive.testzip() is not None:
                     raise zipfile.BadZipFile("ZIP文件损坏")
             elif self.type == 'rar':
-                # 只打开文件以获取文件列表，不进行解压
                 self.archive = rarfile.RarFile(self.filepath)
                 if self.archive.needs_password():
                     raise Exception("RAR文件有密码保护")
+                # 直接解压所有RAR文件
+                if not self._extract_rar_all():
+                    raise Exception("RAR文件解压失败")
             elif self.type == 'gz':
                 self.archive = gzip.GzipFile(self.filepath)
             return self
@@ -175,16 +176,11 @@ class ArchiveHandler:
 
     def list_files(self):
         try:
-            files = []
             if self.type == 'zip':
-                files = [self.__encode_filename(f) for f in self.archive.namelist() 
-                        if not f.endswith('/')]
+                files = [f for f in self.archive.namelist() if not f.endswith('/')]
             elif self.type == 'rar':
-                files = [self.__encode_filename(f.filename) for f in self.archive.infolist() 
-                        if not f.is_dir()]
-                processable_files = [f for f in files if can_process_file(f)]
-                if processable_files:
-                    self._extract_rar_files(processable_files)
+                # 对于RAR文件，直接返回已解压的文件列表
+                files = list(self._extracted_files.keys())
             elif self.type == '7z':
                 result = subprocess.run(
                     ['7z', 'l', '-slt', self.filepath], 
@@ -212,6 +208,7 @@ class ArchiveHandler:
                         current_file = None
                         is_directory = False
                 
+                # 对于7z文件，只解压需要处理的文件
                 processable_files = [f for f in files if can_process_file(f)]
                 if processable_files:
                     self._extract_7z_files(processable_files)
@@ -222,6 +219,8 @@ class ArchiveHandler:
                     files = [base_name[:-3]]
                 else:
                     files = ['content']
+            else:
+                files = []
 
             processable = [f for f in files if can_process_file(f)]
             logger.info(f"找到 {len(processable)} 个可处理文件")
@@ -236,12 +235,14 @@ class ArchiveHandler:
             if self.type == 'zip':
                 return self.archive.getinfo(filename).file_size
             elif self.type == 'rar':
+                # 对于RAR文件，直接获取解压后文件的大小
                 if filename in self._extracted_files:
                     return os.path.getsize(self._extracted_files[filename])
-                return self.archive.getinfo(filename).file_size
+                return 0
             elif self.type == '7z':
                 if filename in self._extracted_files:
                     return os.path.getsize(self._extracted_files[filename])
+                # 如果文件未解压，运行7z l命令获取文件大小
                 result = subprocess.run(
                     ['7z', 'l', '-slt', self.filepath, filename],
                     stdout=subprocess.PIPE,
@@ -266,31 +267,28 @@ class ArchiveHandler:
 
     def extract_file(self, filename):
         try:
-            encoded_filename = self.__encode_filename(filename)
-            logger.info(f"正在检测文件: {encoded_filename}")
+            base_name = os.path.basename(filename)
+            logger.info(f"正在检测文件: {base_name}")
             
             if self.type == 'zip':
-                return self.archive.read(filename)  # 使用原始 filename
+                return self.archive.read(filename)
             elif self.type == 'rar':
-                if encoded_filename in self._extracted_files:
-                    with open(self._extracted_files[encoded_filename], 'rb') as f:
+                # 对于RAR文件，直接返回已解压文件的内容
+                if filename in self._extracted_files:
+                    with open(self._extracted_files[filename], 'rb') as f:
                         return f.read()
-                if can_process_file(encoded_filename):
-                    self._extract_rar_files([filename])  # 使用原始 filename
-                    if encoded_filename in self._extracted_files:
-                        with open(self._extracted_files[encoded_filename], 'rb') as f:
-                            return f.read()
-                return self.archive.read(filename)  # 使用原始 filename
+                raise Exception(f"文件 {filename} 未在提取列表中")
             elif self.type == '7z':
-                if encoded_filename in self._extracted_files:
-                    with open(self._extracted_files[encoded_filename], 'rb') as f:
+                if filename in self._extracted_files:
+                    with open(self._extracted_files[filename], 'rb') as f:
                         return f.read()
-                if can_process_file(encoded_filename):
-                    self._extract_7z_files([filename])  # 使用原始 filename
-                    if encoded_filename in self._extracted_files:
-                        with open(self._extracted_files[encoded_filename], 'rb') as f:
+                # 如果文件还未解压，则进行解压
+                if can_process_file(filename):
+                    self._extract_7z_files([filename])
+                    if filename in self._extracted_files:
+                        with open(self._extracted_files[filename], 'rb') as f:
                             return f.read()
-                raise Exception(f"文件 {encoded_filename} 未找到在提取列表中")
+                raise Exception(f"文件 {filename} 未找到在提取列表中")
             elif self.type == 'gz':
                 return self.archive.read()
             raise Exception("不支持的压缩格式")

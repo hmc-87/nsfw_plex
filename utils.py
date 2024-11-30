@@ -62,8 +62,47 @@ class ArchiveHandler:
         ext = Path(original_filename).suffix
         return f"{str(uuid.uuid4())}{ext}"
 
+    def _extract_rar_all(self):
+        """使用unrar命令行工具完整解压RAR文件"""
+        if not self.temp_dir:
+            self.temp_dir = tempfile.mkdtemp()
+
+        try:
+            # 使用unrar命令行工具解压
+            extract_cmd = ['unrar', 'x', '-y', self.filepath, self.temp_dir + os.sep]
+            result = subprocess.run(
+                extract_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                encoding='utf-8'
+            )
+
+            if result.returncode != 0:
+                raise Exception(f"RAR解压失败: {result.stderr}")
+
+            # 遍历解压目录，重命名文件并记录映射关系
+            for root, _, files in os.walk(self.temp_dir):
+                for filename in files:
+                    original_path = os.path.join(root, filename)
+                    relative_path = os.path.relpath(original_path, self.temp_dir)
+                    
+                    # 生成新的唯一文件名
+                    new_filename = str(uuid.uuid4()) + os.path.splitext(filename)[1]
+                    new_path = os.path.join(self.temp_dir, new_filename)
+                    
+                    # 移动文件并记录映射
+                    os.rename(original_path, new_path)
+                    self._extracted_files[relative_path] = new_path
+
+            logger.info(f"成功解压 {len(self._extracted_files)} 个文件到临时目录")
+            return True
+
+        except Exception as e:
+            logger.error(f"RAR完整解压失败: {str(e)}")
+            return False
+        
     def _extract_7z_files(self, files_to_extract):
-        """只解压需要处理的文件到临时目录"""
+        """只解压需要处理的7z文件到临时目录"""
         if not self.temp_dir:
             self.temp_dir = tempfile.mkdtemp()
 
@@ -115,6 +154,9 @@ class ArchiveHandler:
                 self.archive = rarfile.RarFile(self.filepath)
                 if self.archive.needs_password():
                     raise Exception("RAR文件有密码保护")
+                # 直接解压所有RAR文件
+                if not self._extract_rar_all():
+                    raise Exception("RAR文件解压失败")
             elif self.type == 'gz':
                 self.archive = gzip.GzipFile(self.filepath)
             return self
@@ -137,7 +179,8 @@ class ArchiveHandler:
             if self.type == 'zip':
                 files = [f for f in self.archive.namelist() if not f.endswith('/')]
             elif self.type == 'rar':
-                files = [f.filename for f in self.archive.infolist() if not f.is_dir()]
+                # 对于RAR文件，直接返回已解压的文件列表
+                files = list(self._extracted_files.keys())
             elif self.type == '7z':
                 result = subprocess.run(
                     ['7z', 'l', '-slt', self.filepath], 
@@ -192,7 +235,10 @@ class ArchiveHandler:
             if self.type == 'zip':
                 return self.archive.getinfo(filename).file_size
             elif self.type == 'rar':
-                return self.archive.getinfo(filename).file_size
+                # 对于RAR文件，直接获取解压后文件的大小
+                if filename in self._extracted_files:
+                    return os.path.getsize(self._extracted_files[filename])
+                return 0
             elif self.type == '7z':
                 if filename in self._extracted_files:
                     return os.path.getsize(self._extracted_files[filename])
@@ -227,7 +273,11 @@ class ArchiveHandler:
             if self.type == 'zip':
                 return self.archive.read(filename)
             elif self.type == 'rar':
-                return self.archive.read(filename)
+                # 对于RAR文件，直接返回已解压文件的内容
+                if filename in self._extracted_files:
+                    with open(self._extracted_files[filename], 'rb') as f:
+                        return f.read()
+                raise Exception(f"文件 {filename} 未在提取列表中")
             elif self.type == '7z':
                 if filename in self._extracted_files:
                     with open(self._extracted_files[filename], 'rb') as f:

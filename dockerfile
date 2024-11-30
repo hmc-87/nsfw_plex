@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     curl \
     unrar \
-    p7zip-full \
+    p7zip-full p7zip-rar \
     python3-opencv \
     libgl1-mesa-glx \
     libglib2.0-0 \

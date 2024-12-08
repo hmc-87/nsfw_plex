@@ -3,10 +3,19 @@ set -e
 
 # 默认配置值
 IMAGE_NAME="vxlink/nsfw_detector"
-VERSION="v1.7"
+VERSION="v1.8"  # 默认版本，如果无法读取 build.version 文件时使用
 PUSH="false"
 CACHE_DIR="${HOME}/.docker/nsfw_detector_cache"
 CACHE_FROM=""
+
+# 读取 build.version 文件
+VERSION_FILE="./build.version"
+if [ -f "$VERSION_FILE" ]; then
+    VERSION=$(cat "$VERSION_FILE" | tr -d '[:space:]')
+    echo "Using version from build.version: $VERSION"
+else
+    echo "Warning: version file not found at $VERSION_FILE, using default version $VERSION"
+fi
 
 # 检测本机平台
 NATIVE_PLATFORM=$(docker version -f '{{.Server.Os}}/{{.Server.Arch}}' | sed 's/x86_64/amd64/')

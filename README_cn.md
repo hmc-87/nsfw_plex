@@ -62,6 +62,17 @@ curl -X POST -F "path=/path/to/image.jpg" http://localhost:3333/check
 
 访问地址：[http://localhost:3333](http://localhost:3333)
 
+## 编辑配置文件  
+
+现在，您可以通过挂载 /tmp 目录，并在该目录下创建一个名为  config 的文件，来配置检测器的行为。
+您可以查看 [config](config) 文件作为参考。
+
+* `nsfw_threshold` 当目标文件的 NSFW 值超过多少时设定为匹配项目并作为结果返回。
+* `ffmpeg_max_frames` 处理视频时最多处理多少帧。
+* `ffmpeg_max_timeout` 处理视频时的超时限制。
+
+此外， /tmp 目录作为容器中的临时目录，配置到一个高性能的存储设备上会提高性能。
+
 ## 公共 API
 
 可以使用 vx.link 提供的公共 API 服务来检测 NSFW 内容。

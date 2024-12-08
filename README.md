@@ -64,6 +64,17 @@ curl -X POST -F "path=/path/to/image.jpg" http://localhost:3333/check
 
 Visit: [http://localhost:3333](http://localhost:3333)
 
+## Edit Configuration File
+
+Now, you can configure the detector's behavior by mounting the /tmp directory and creating a file named config in that directory.
+You can refer to the [config](config) file as a reference.
+
+* `nsfw_threshold` Sets what NSFW value threshold must be exceeded for a target file to be considered a match and returned as a result.
+* `ffmpeg_max_frames` Maximum number of frames to process when handling videos.
+* `ffmpeg_max_timeout` Timeout limit when processing videos.
+
+Additionally, since the /tmp directory serves as a temporary directory in the container, configuring it on a high-performance storage device will improve performance.
+
 ## Public API
 
 You can use the public API service provided by vx.link.

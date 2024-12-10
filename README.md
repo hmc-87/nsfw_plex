@@ -1,92 +1,89 @@
-# NSFW Detector
-
-[中文指南](README_cn.md) | [日本語ガイド](README_jp.md)
+# NSFW Plex (Or any media)
 
 ## Introduction
 
 This is an NSFW content detector based on [Falconsai/nsfw_image_detection](https://huggingface.co/Falconsai/nsfw_image_detection).  
 Model: google/vit-base-patch16-224-in21k
 
-You can try it online(using Public API): [NSFW Detector](https://www.vx.link/nsfw_detector.html)
+This tool detects NSFW content in various file formats using AI. It runs locally on your server, ensuring data security.
 
-Compared to other common NSFW detectors, this detector has the following advantages:
+It will currently scan files to deteremine NFSW.  Future builds will include automatic media library scanning, notifcaitons and quarantining for review. 
 
-* AI-based, providing better accuracy.
-* Supports CPU-only inference, can run on most servers.
-* Automatically utilizes multiple CPUs to accelerate inference.
-* Simple classification with only two categories: nsfw and normal.
-* Provides service via API, making it easier to integrate with other applications.
-* Docker-based deployment, suitable for distributed deployment.
-* Purely local, protecting your data security.
+## Key Features
 
-### Performance Requirements
+- **AI-powered** for high accuracy.
+- Works on **CPU-only systems**.
+- **Efficient**—utilizes multiple CPUs for faster processing.
+- Simple classification: **NSFW** or **Normal**.
+- API-based, easy to integrate into applications.
+- Fully **local**, no data is sent to external servers.
+- Docker-based for quick and consistent deployment.
 
-Running this model requires up to 2GB of memory. No GPU support is needed.  
-When handling a large number of requests simultaneously, more memory may be required.
+## System Requirements
 
-### Supported File Types
+- **Memory**: Requires up to 2GB RAM.
+- **Architecture**: Supports `x86_64` and `ARM64`.
+- **File Types Supported**:
+  - Images
+  - PDFs
+  - Videos
+  - Compressed files (ZIP, RAR, etc.)
 
-This detector supports checking the following file types:
+---
 
-* ✅ Images (supported)
-* ✅ PDF files (supported)
-* ✅ Videos (supported)
-* ✅ Files in compressed packages (supported)
+## Quick Start Guide
 
-## Quick Start
+### Step 1: Run the Detector
 
-### Start the API Server
+To run the NSFW detector, use Docker. The following command starts the API server:
 
 ```bash
 docker run -d -p 3333:3333 --name nsfw-detector vxlink/nsfw_detector:latest
-```
 
-To check files in local paths on the server, mount the path to the container.
-It is recommended to keep the mounted path consistent with the path inside the container to avoid confusion.
+Step 2: Optional - Mount Local Files
 
-```bash
-docker run -d -p 3333:3333 -v /path/to/files:/path/to/files --name nsfw-detector vxlink/nsfw_detector:latest
-```
+If you need to analyze local files on the server, mount the desired directory into the Docker container:
 
-Supported architectures: `x86_64`, `ARM64`.
+docker run -d -p 3333:3333 -v /path/to/files:/path/to/files --name nsfw-detector hmc-87/nsfw_plex:latest
 
-### Use the API for Content Checking
+Replace /path/to/files with the path of the directory containing your files.
 
-```bash
-# Detection
+How to Use
+
+1. Using the API
+
+You can send files for detection using curl:
+	•	Detect NSFW in an uploaded file:
+
 curl -X POST -F "file=@/path/to/image.jpg" http://localhost:3333/check
 
-# Check Local Files
+
+	•	Analyze a file by its path on the server:
+
 curl -X POST -F "path=/path/to/image.jpg" http://localhost:3333/check
-```
 
-### Use the Built-in Web Interface for Detection
 
-Visit: [http://localhost:3333](http://localhost:3333)
 
-## Edit Configuration File
+2. Web Interface
 
-Now, you can configure the detector's behavior by mounting the /tmp directory and creating a file named config in that directory.
-You can refer to the [config](config) file as a reference.
+Access the built-in web interface by visiting http://localhost:3333 in your browser.
+Here, you can upload files directly to check for NSFW content.
 
-* `nsfw_threshold` Sets what NSFW value threshold must be exceeded for a target file to be considered a match and returned as a result.
-* `ffmpeg_max_frames` Maximum number of frames to process when handling videos.
-* `ffmpeg_max_timeout` Timeout limit when processing videos.
+Configuration
 
-Additionally, since the /tmp directory serves as a temporary directory in the container, configuring it on a high-performance storage device will improve performance.
+You can customize the detector by creating a config file and mounting it in the /tmp directory of the container.
 
-## Public API
+Example Configuration Options:
+	•	NSFW Threshold: Adjust sensitivity (nsfw_threshold).
+	•	Video Frame Limit: Set maximum frames to process (ffmpeg_max_frames).
+	•	Video Timeout: Set timeout for video processing (ffmpeg_max_timeout).
 
-You can use the public API service provided by vx.link.
+To use a custom configuration, mount the /tmp directory:
 
-```bash
-# Detect files, automatically recognize file types
-curl -X POST -F "file=@/path/to/image.jpg" https://vx.link/public/nsfw
-```
+docker run -d -p 3333:3333 -v /tmp/config:/tmp/config --name nsfw-detector hmc-87/nsfw_plex:latest
 
-* Your submitted images will not be saved.
-* Please note that the API rate limit is 30 requests per minute.
 
-## License
+License
 
-This project is open-source under the Apache 2.0 license.
+This project is open-source under the Apache 2.0 License.
+

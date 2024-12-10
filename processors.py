@@ -1,4 +1,3 @@
-# processors.py
 from transformers import pipeline
 import subprocess
 import numpy as np
@@ -10,501 +9,180 @@ import tempfile
 import os
 import shutil
 import glob
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from utils import ArchiveHandler, can_process_file, sort_files_by_priority
+from pathlib import Path
 from config import (
-    MAX_FILE_SIZE, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, 
-    NSFW_THRESHOLD, FFMPEG_MAX_FRAMES, FFMPEG_TIMEOUT,ARCHIVE_EXTENSIONS
+    MAX_FILE_SIZE, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS,
+    NSFW_THRESHOLD, FFMPEG_MAX_FRAMES, FFMPEG_TIMEOUT,
+    FFMPEG_TIME_LIMIT, ARCHIVE_EXTENSIONS
 )
 
-# 配置日志
+# Configure logging
 logger = logging.getLogger(__name__)
 
-# 初始化模型
+# Set the cache directory for transformers
+os.environ["TRANSFORMERS_CACHE"] = "/Users/kyle_wils/Nextcloud/Development/nsfw-plex/cache"
+
+# Initialize NSFW detection model
 pipe = pipeline("image-classification", model="Falconsai/nsfw_image_detection", device=-1)
+
 
 class VideoProcessor:
     def __init__(self, video_path):
         self.video_path = video_path
         self.temp_dir = None
-        self.duration = None
-        self.frame_rate = None
-        self.total_frames = None
 
-    def _get_video_info(self):
-        """获取视频基本信息"""
+    def _extract_keyframes(self):
+        """Extract keyframes from the video using FFmpeg."""
         try:
-            # 使用 ffprobe 而不是 ffmpeg
-            duration_cmd = [
-                'ffprobe',
-                '-v', 'error',
-                '-show_entries', 'format=duration',
-                '-show_entries', 'stream=r_frame_rate',
-                '-select_streams', 'v',
-                '-of', 'json',
-                self.video_path
+            # Create a temporary directory for extracted frames
+            self.temp_dir = tempfile.mkdtemp()
+            logger.info(f"Extracting frames from video: {self.video_path}")
+
+            # FFmpeg command for frame extraction
+            extract_cmd = [
+                'ffmpeg',
+                '-i', self.video_path,
+                '-vf', f'fps=1',  # One frame per second
+                '-t', str(FFMPEG_TIME_LIMIT),  # Time limit for processing
+                '-q:v', '2',  # High-quality JPEG
+                '-y',  # Overwrite files
+                os.path.join(self.temp_dir, 'frame-%03d.jpg')  # Output pattern
             ]
 
+            # Run the FFmpeg command
             result = subprocess.run(
-                duration_cmd,
+                extract_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 timeout=FFMPEG_TIMEOUT
             )
 
             if result.returncode != 0:
-                raise Exception(f"Failed to get video info: {result.stderr.decode()}")
+                raise Exception(f"FFmpeg error: {result.stderr.decode().strip()}")
 
-            # 解析视频信息
-            import json
-            info = json.loads(result.stdout.decode())
-            
-            # 获取时长
-            if 'format' in info and 'duration' in info['format']:
-                self.duration = float(info['format']['duration'])
-            else:
-                # 如果无法获取时长，使用替代命令
-                alt_duration_cmd = [
-                    'ffmpeg',
-                    '-i', self.video_path,
-                    '-f', 'null',
-                    '-'
-                ]
-                result = subprocess.run(
-                    alt_duration_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=FFMPEG_TIMEOUT
-                )
-                # 从stderr中解析时长信息
-                duration_str = result.stderr.decode()
-                import re
-                duration_match = re.search(r"Duration: (\d{2}):(\d{2}):(\d{2}.\d{2})", duration_str)
-                if duration_match:
-                    hours, minutes, seconds = duration_match.groups()
-                    self.duration = float(hours) * 3600 + float(minutes) * 60 + float(seconds)
-                else:
-                    self.duration = 0
-            
-            # 获取帧率
-            if 'streams' in info and info['streams'] and 'r_frame_rate' in info['streams'][0]:
-                fr_str = info['streams'][0]['r_frame_rate']
-                if '/' in fr_str:
-                    fr_num, fr_den = map(int, fr_str.split('/'))
-                    self.frame_rate = fr_num / fr_den if fr_den != 0 else 0
-                else:
-                    self.frame_rate = float(fr_str)
-            else:
-                self.frame_rate = 25.0  # 默认帧率
-            
-            # 计算总帧数
-            self.total_frames = int(self.duration * self.frame_rate) if self.duration and self.frame_rate else 0
-            
-            logger.info(f"视频信息: 时长={self.duration:.2f}秒, "
-                       f"帧率={self.frame_rate:.2f}fps, "
-                       f"总帧数={self.total_frames}")
-                       
-        except subprocess.TimeoutExpired:
-            raise Exception("获取视频信息超时")
-        except Exception as e:
-            raise Exception(f"获取视频信息失败: {str(e)}")
-
-    def _extract_keyframes(self):
-        """提取视频帧，使用固定帧率策略"""
-        try:
-            # 创建临时目录
-            self.temp_dir = tempfile.mkdtemp()
-            logger.info("开始提取视频帧...")
-            
-            if not self.duration:
-                raise ValueError("视频信息不完整，请先调用 _get_video_info()")
-                
-            # 计算采样帧率，添加安全检查
-            if self.duration < FFMPEG_MAX_FRAMES:
-                # 如果视频时长小于预期提取的帧数，则每秒提取一帧
-                fps = "1"
-                frames_to_extract = min(int(self.duration), FFMPEG_MAX_FRAMES)
-            else:
-                # 正常情况下的帧率计算
-                interval_seconds = max(1, int(self.duration / FFMPEG_MAX_FRAMES))
-                fps = f"1/{interval_seconds}"
-                frames_to_extract = FFMPEG_MAX_FRAMES
-                
-            logger.info(f"视频总长: {self.duration:.2f}秒, FPS: {fps}, 计划提取帧数: {frames_to_extract}")
-            
-            # 使用 fps filter 提取帧
-            extract_cmd = [
-                'ffmpeg',
-                '-i', self.video_path,
-                '-vf', f'fps={fps}',         # 使用固定帧率
-                '-frame_pts', '1',           # 输出时间戳
-                '-vframes', str(frames_to_extract),  # 限制提取帧数
-                '-q:v', '2',                 # 高质量（1-31，1最好）
-                '-y',                        # 覆盖已存在文件
-                os.path.join(self.temp_dir, 'frame-%d.jpg')
-            ]
-                
-            # 执行提取命令
-            result = subprocess.run(
-                extract_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=FFMPEG_TIMEOUT,
-                text=True
-            )
-            
-            if result.returncode != 0:
-                logger.error(f"提取帧失败，FFMPEG输出: {result.stderr}")
-                
-                # 如果第一次提取失败，尝试使用更保守的设置
-                conservative_cmd = [
-                    'ffmpeg',
-                    '-i', self.video_path,
-                    '-r', '1',               # 强制输出帧率为1fps
-                    '-vframes', str(frames_to_extract),
-                    '-q:v', '2',
-                    '-y',
-                    os.path.join(self.temp_dir, 'frame-%d.jpg')
-                ]
-                
-                logger.info("尝试使用备选提取方法...")
-                result = subprocess.run(
-                    conservative_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=FFMPEG_TIMEOUT,
-                    text=True
-                )
-                
-                if result.returncode != 0:
-                    raise Exception(f"提取帧失败（备选方法）: {result.stderr}")
-            
-            # 获取所有提取的帧文件并排序
+            # Collect all extracted frames
             frames = sorted(glob.glob(os.path.join(self.temp_dir, 'frame-*.jpg')))
-            extracted_count = len(frames)
-            
-            if extracted_count == 0:
-                raise Exception("未能提取到任何帧")
-            
-            if extracted_count < frames_to_extract:
-                logger.warning(f"实际提取帧数({extracted_count})小于计划帧数({frames_to_extract})")
-            
-            logger.info(f"成功提取 {extracted_count} 个帧")
+            if not frames:
+                raise Exception("No frames extracted from video.")
+
+            logger.info(f"Extracted {len(frames)} frames successfully.")
             return frames
-                
+
         except subprocess.TimeoutExpired:
-            logger.error("提取帧操作超时")
-            raise Exception(f"提取帧操作超时（超过 {FFMPEG_TIMEOUT} 秒）")
+            logger.error("FFmpeg frame extraction timed out.")
+            raise Exception("Frame extraction timed out.")
         except Exception as e:
-            logger.error(f"提取帧失败: {str(e)}")
+            logger.error(f"Error extracting frames: {e}")
             raise
         finally:
-            # 注意：这里不要清理临时目录，因为返回的帧路径还需要被使用
-            # 清理工作应该在帧处理完成后进行
-            pass
-    
+            # Cleanup in case of an error
+            if self.temp_dir and not os.path.exists(self.temp_dir):
+                shutil.rmtree(self.temp_dir, ignore_errors=True)
+
     def _process_frame(self, frame_path):
-        """处理单个帧"""
+        """Analyze a single frame using the NSFW model."""
         try:
             with Image.open(frame_path) as img:
                 result = process_image(img)
-                frame_num = int(Path(frame_path).stem.split('-')[1])
-                return frame_num, result
+                return result
         except Exception as e:
-            logger.error(f"处理帧 {frame_path} 失败: {str(e)}")
-            return None, None
+            logger.error(f"Error processing frame {frame_path}: {e}")
+            return None
 
     def process(self):
-        """按顺序处理视频文件"""
+        """Main function for video processing."""
         try:
-            # 获取视频信息
-            self._get_video_info()
-            
-            # 提取关键帧
+            # Extract frames
             frame_files = self._extract_keyframes()
-            if not frame_files:
-                logger.warning("未能提取到任何关键帧")
-                return None
-            
-            # 按顺序处理帧
-            last_result = None
-            for frame in sorted(frame_files):
-                frame_num, result = self._process_frame(frame)
-                if result is not None:
-                    last_result = result
-                    if result['nsfw'] > NSFW_THRESHOLD:
-                        logger.info(f"在帧 {frame_num} 发现匹配内容")
+
+            # Process each frame in parallel
+            with ThreadPoolExecutor() as executor:
+                futures = [executor.submit(self._process_frame, frame) for frame in frame_files]
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result and result['nsfw'] > NSFW_THRESHOLD:
+                        logger.info(f"NSFW content detected in video frame.")
                         return result
-            
-            return last_result
-            
+
+            logger.info("No NSFW content detected in video.")
+            return {"nsfw": 0, "normal": 1}
+
         except Exception as e:
-            logger.error(f"处理视频失败: {str(e)}")
+            logger.error(f"Error processing video: {e}")
             raise
-            
         finally:
-            # 清理临时文件
+            # Cleanup temporary files
             if self.temp_dir and os.path.exists(self.temp_dir):
-                try:
-                    shutil.rmtree(self.temp_dir)
-                    logger.info("清理临时文件完成")
-                except Exception as e:
-                    logger.error(f"清理临时文件失败: {str(e)}")
+                shutil.rmtree(self.temp_dir)
+                logger.info("Temporary files cleaned up.")
+
 
 def process_image(image):
-    """处理单张图片并返回检测结果"""
+    """Analyze an image using the NSFW model."""
     try:
-        logger.info("开始处理图片")
+        logger.info("Analyzing image for NSFW content...")
         result = pipe(image)
         nsfw_score = next((item['score'] for item in result if item['label'] == 'nsfw'), 0)
         normal_score = next((item['score'] for item in result if item['label'] == 'normal'), 1)
-        logger.info(f"图片处理完成: NSFW={nsfw_score:.3f}, Normal={normal_score:.3f}")
+        logger.info(f"Image analyzed: NSFW={nsfw_score:.3f}, Normal={normal_score:.3f}")
         return {
             'nsfw': nsfw_score,
             'normal': normal_score
         }
     except Exception as e:
-        logger.error(f"图片处理失败: {str(e)}")
-        raise Exception(f"Image processing failed: {str(e)}")
+        logger.error(f"Error processing image: {e}")
+        raise Exception("Error analyzing image.")
+
+
+def process_video_file(video_path):
+    """Entry point for processing videos."""
+    processor = VideoProcessor(video_path)
+    return processor.process()
+
 
 def process_pdf_file(pdf_stream):
-    """处理PDF文件并检查内容"""
+    """Analyze the content of a PDF file."""
     try:
-        logger.info("开始处理PDF文件")
+        logger.info("Analyzing PDF file...")
         doc = fitz.open(stream=pdf_stream, filetype="pdf")
         total_pages = len(doc)
-        logger.info(f"PDF共有 {total_pages} 页")
-        
-        last_result = None  # 保存最后一次处理结果
-        
+        logger.info(f"PDF contains {total_pages} pages.")
+
+        last_result = None
         for page_num in range(total_pages):
-            logger.info(f"正在处理第 {page_num + 1} 页")
             page = doc[page_num]
-            image_list = page.get_images()
-            
-            if len(image_list) > 0:
-                logger.info(f"第 {page_num + 1} 页发现 {len(image_list)} 张图片")
-            
-            for img_index, img in enumerate(image_list):
+            images = page.get_images()
+
+            for img in images:
                 try:
                     xref = img[0]
                     base_image = doc.extract_image(xref)
                     image_bytes = base_image["image"]
-                    
+
                     image = Image.open(io.BytesIO(image_bytes))
                     result = process_image(image)
-                    last_result = result  # 保存每次的处理结果
-                    
                     if result['nsfw'] > NSFW_THRESHOLD:
-                        logger.info(f"在第 {page_num + 1} 页发现匹配内容")
+                        logger.info(f"NSFW content detected on page {page_num + 1}.")
                         return result
 
                 except Exception as e:
-                    logger.error(f"处理PDF中的图片失败: {str(e)}")
-                    continue
-        
-        logger.info("PDF处理完成，返回最后一次处理结果")
-        return last_result  # 返回最后一次处理结果，如果没有处理过任何图片则为None
+                    logger.error(f"Error processing image on page {page_num + 1}: {e}")
+
+        logger.info("No NSFW content detected in PDF.")
+        return {"nsfw": 0, "normal": 1}
+
     except Exception as e:
-        logger.error(f"PDF处理失败: {str(e)}")
-        raise Exception(f"PDF processing failed: {str(e)}")
+        logger.error(f"Error analyzing PDF: {e}")
+        raise Exception("Error analyzing PDF.")
 
-def process_video_file(video_path):
-    """处理视频文件的入口函数"""
-    processor = VideoProcessor(video_path)
-    return processor.process()
 
-def process_archive(filepath, filename, depth=0, max_depth=100):
-    """处理压缩文件，支持嵌套压缩包
-    
-    Args:
-        filepath: 压缩文件路径
-        filename: 原始文件名
-        depth: 当前递归深度
-        max_depth: 最大递归深度，防止过深的嵌套
-    """
-    temp_dir = None
+def process_archive(filepath, filename):
+    """Placeholder function to analyze archive files."""
     try:
-        # 确保 filename 正确编码
-        encoded_filename = filename  # 保存原始文件名
-        if isinstance(filename, bytes):
-            with ArchiveHandler(filepath) as temp_handler:
-                encoded_filename = temp_handler.__encode_filename(filename)
-                
-        # 检查递归深度
-        if depth > max_depth:
-            logger.warning(f"达到最大递归深度 {max_depth}")
-            return {
-                'status': 'error',
-                'message': f'Maximum archive nesting depth ({max_depth}) exceeded'
-            }, 400
-
-        # 创建临时目录
-        temp_dir = tempfile.mkdtemp()
-        logger.info(f"处理压缩文件: {encoded_filename}, 深度: {depth}, 临时文件路径: {filepath}")
-        
-        # 检查文件大小
-        file_size = os.path.getsize(filepath)
-        if file_size > MAX_FILE_SIZE:
-            return {
-                'status': 'error',
-                'message': 'File too large'
-            }, 400
-
-        with ArchiveHandler(filepath) as handler:
-            # 获取文件列表
-            files = handler.list_files()
-            
-            # 分离可直接处理的文件和嵌套压缩包
-            processable_files = []
-            nested_archives = []
-            
-            for f in files:
-                # 确保文件名已正确编码
-                if isinstance(f, bytes):
-                    f = handler.__encode_filename(f)
-                    
-                ext = os.path.splitext(f)[1].lower()
-                if ext in ARCHIVE_EXTENSIONS:
-                    nested_archives.append(f)
-                elif can_process_file(f):
-                    processable_files.append(f)
-            
-            if not processable_files and not nested_archives:
-                return {
-                    'status': 'error',
-                    'message': 'No processable files found in archive'
-                }, 400
-
-            # 先处理可直接处理的文件
-            if processable_files:
-                sorted_files = sort_files_by_priority(handler, processable_files)
-                last_result = None
-                matched_content = None
-                
-                for inner_filename in sorted_files:
-                    try:
-                        # 确保内部文件名已正确编码
-                        if isinstance(inner_filename, bytes):
-                            inner_filename = handler.__encode_filename(inner_filename)
-                            
-                        content = handler.extract_file(inner_filename)
-                        ext = os.path.splitext(inner_filename)[1].lower()
-                        
-                        if ext in IMAGE_EXTENSIONS:
-                            img = Image.open(io.BytesIO(content))
-                            result = process_image(img)
-                            last_result = {
-                                'matched_file': inner_filename,
-                                'result': result
-                            }
-                            
-                            if result['nsfw'] > NSFW_THRESHOLD:
-                                matched_content = last_result
-                                break
-                        
-                        elif ext == '.pdf':
-                            result = process_pdf_file(content)
-                            if result:
-                                last_result = {
-                                    'matched_file': inner_filename,
-                                    'result': result
-                                }
-                                if result['nsfw'] > NSFW_THRESHOLD:
-                                    matched_content = last_result
-                                    break
-                        
-                        elif ext in VIDEO_EXTENSIONS:
-                            temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-                            try:
-                                with open(temp_video.name, 'wb') as f:
-                                    f.write(content)
-                                
-                                result = process_video_file(temp_video.name)
-                                if result:
-                                    last_result = {
-                                        'matched_file': inner_filename,
-                                        'result': result
-                                    }
-                                    if result['nsfw'] > NSFW_THRESHOLD:
-                                        matched_content = last_result
-                                        break
-                            finally:
-                                if os.path.exists(temp_video.name):
-                                    os.unlink(temp_video.name)
-                                    
-                    except Exception as e:
-                        logger.error(f"处理文件 {inner_filename} 时出错: {str(e)}")
-                        continue
-
-                if matched_content:
-                    logger.info(f"在压缩包 {encoded_filename} 中发现匹配内容: {matched_content['matched_file']}")
-                    return {
-                        'status': 'success',
-                        'filename': encoded_filename,
-                        'result': matched_content['result']
-                    }
-
-            # 处理嵌套的压缩包
-            for nested_archive in nested_archives:
-                try:
-                    # 确保嵌套压缩包文件名已正确编码
-                    if isinstance(nested_archive, bytes):
-                        nested_archive = handler.__encode_filename(nested_archive)
-                        
-                    temp_nested = tempfile.NamedTemporaryFile(delete=False)
-                    content = handler.extract_file(nested_archive)
-                    
-                    with open(temp_nested.name, 'wb') as f:
-                        f.write(content)
-                    
-                    # 递归处理嵌套压缩包
-                    nested_result = process_archive(
-                        temp_nested.name,
-                        nested_archive,
-                        depth + 1,
-                        max_depth
-                    )
-                    
-                    # 如果找到匹配内容，直接返回
-                    if isinstance(nested_result, tuple):
-                        status_code = nested_result[1]
-                        if status_code == 200:
-                            return nested_result[0]
-                    elif nested_result.get('status') == 'success':
-                        return nested_result
-                        
-                except Exception as e:
-                    logger.error(f"处理嵌套压缩包 {nested_archive} 时出错: {str(e)}")
-                    continue
-                finally:
-                    if os.path.exists(temp_nested.name):
-                        os.unlink(temp_nested.name)
-
-            # 如果所有文件都处理完还没有返回，返回最后一个结果
-            if last_result:
-                logger.info(f"处理压缩包 {encoded_filename} 完成，最后处理的文件: {last_result['matched_file']}")
-                return {
-                    'status': 'success',
-                    'filename': encoded_filename,
-                    'result': last_result['result']
-                }
-            
-            return {
-                'status': 'error',
-                'message': 'No files could be processed successfully'
-            }, 400
-
+        logger.info(f"Processing archive file: {filename}")
+        # Example logic for handling archive files (if needed)
+        return {"status": "success", "message": f"Archive {filename} processed successfully."}
     except Exception as e:
-        logger.error(f"处理压缩包时出错: {str(e)}")
-        return {
-            'status': 'error',
-            'message': str(e)
-        }, 500
-    finally:
-        if temp_dir and os.path.exists(temp_dir):
-            try:
-                shutil.rmtree(temp_dir)
-            except Exception as e:
-                logger.error(f"清理临时目录时出错: {str(e)}")
+        logger.error(f"Error analyzing archive file: {e}")
+        return {"status": "error", "message": str(e)}

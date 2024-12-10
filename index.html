@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
@@ -22,34 +22,6 @@
             text-align: right;
         }
 
-        .lang-switch {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-        }
-
-        .lang-switch button {
-            background: none;
-            border: 1px solid #e0e0e0;
-            color: #666;
-            padding: 6px 12px;
-            border-radius: 16px;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 14px;
-        }
-
-        .lang-switch button:hover {
-            background: #f5f5f5;
-            border-color: #ccc;
-        }
-
-        .lang-switch button.active {
-            background: #2196F3;
-            color: white;
-            border-color: #2196F3;
-        }
-
         .main-content {
             flex: 1;
             display: flex;
@@ -57,24 +29,6 @@
             justify-content: center;
             padding: 20px;
             margin: 20px 0;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 600px;
-            text-align: center;
-        }
-
-        h1 {
-            margin: 0 0 10px 0;
-            color: #333;
-        }
-
-        h2 {
-            margin: 0 0 30px 0;
-            color: #666;
-            font-weight: normal;
-            font-size: 1.1em;
         }
 
         .upload-zone {
@@ -95,15 +49,6 @@
 
         .upload-zone:hover {
             border-color: #666;
-        }
-
-        .upload-zone.dragover {
-            border-color: #2196F3;
-            background: #e3f2fd;
-        }
-
-        #fileInput {
-            display: none;
         }
 
         .progress-bar {
@@ -177,171 +122,79 @@
             font-size: 0.9em;
             color: #666;
         }
-
-        @media (max-width: 600px) {
-            .header {
-                text-align: center;
-            }
-
-            .lang-switch {
-                justify-content: center;
-            }
-
-            .main-content {
-                margin: 10px 0;
-            }
-
-            .footer-links {
-                flex-direction: column;
-                gap: 15px;
-            }
-
-            .footer-divider {
-                display: none;
-            }
-
-            .upload-zone {
-                width: 100%;
-                max-width: 280px;
-                height: 180px;
-            }
-
-            h1 {
-                font-size: 1.5em;
-            }
-
-            h2 {
-                font-size: 1em;
-            }
-        }
     </style>
 </head>
 
 <body>
     <div class="header">
         <div class="lang-switch">
-            <button onclick="changeLang('zh')" class="active">中文</button>
-            <button onclick="changeLang('en')">English</button>
-            <button onclick="changeLang('ja')">日本語</button>
+            <p>Language: English</p>
         </div>
     </div>
 
     <div class="main-content">
         <div class="container">
-            <h1>NSFW 文件检测</h1>
-            <h2>支持图像，PDF，视频文件。</h2>
+            <h1>NSFW File Detection</h1>
+            <h2>Supports images, PDFs, video files, and compressed files</h2>
             <div class="upload-zone" id="dropZone">
-                <div id="dropText">点击或拖拽文件到此处上传</div>
-                <input type="file" id="fileInput">
+                <div id="dropText">Click or drag file here to upload</div>
+                <input type="file" id="fileInput" hidden>
                 <div class="progress-bar" id="progressBar">
                     <div class="progress-bar-fill" id="progressBarFill"></div>
                 </div>
                 <div class="result" id="result"></div>
                 <div class="scores" id="scores"></div>
             </div>
-            <div class="hint">您上传的文件不会被保留，分析结束立刻删除</div>
+            <div class="hint">Your uploaded files will not be retained and will be deleted immediately after analysis.</div>
         </div>
     </div>
 
     <footer>
         <div class="footer-links">
-            <a href="https://github.com/tmplink/nsfw_detector" target="_blank">Github</a>
+            <a href="https://github.com/hmc-87/nsfw_plex" target="_blank">GitHub</a>
             <span class="footer-divider">|</span>
-            <a href="https://www.vx.link" target="_blank">Power by VnetLink</a>
+            <a href="https://pragmatic.onl" target="_blank">Powered by PRGMTC Dev</a>
         </div>
     </footer>
 
     <script>
-        const translations = {
-            zh: {
-                title: 'NSFW 文件检测',
-                subtitle: '支持图像，PDF，视频文件，以及压缩包',
-                dropText: '点击或拖拽文件到此处上传',
-                normal: '正常文件',
-                nsfw: 'NSFW!',
-                error: '无法处理的文件',
-                uploadError: '上传失败',
-                parseError: '解析响应失败',
-                processing: '正在处理数据...',
-                privacy: '您上传的文件不会被保留，分析结束立刻删除',
-                scores: '评分 - NSFW: {nsfw}, Normal: {normal}'
-            },
-            en: {
-                title: 'NSFW File Detection',
-                subtitle: 'Supports images, PDFs, video files, and compressed files',
-                dropText: 'Click or drag file here to upload',
-                normal: 'Normal File',
-                nsfw: 'NSFW!',
-                error: 'Unable to process file',
-                uploadError: 'Upload failed',
-                parseError: 'Failed to parse response',
-                processing: 'Processing data...',
-                privacy: 'Your uploaded files will not be retained and will be deleted immediately after analysis',
-                scores: 'Scores - NSFW: {nsfw}, Normal: {normal}'
-            },
-            ja: {
-                title: 'NSFWファイル検出',
-                subtitle: '画像、PDF、動画ファイル、圧縮ファイルに対応',
-                dropText: 'ここをクリックまたはファイルをドラッグしてアップロード',
-                normal: '正常なファイル',
-                nsfw: 'NSFW!',
-                error: '処理できないファイル',
-                uploadError: 'アップロード失敗',
-                parseError: '応答の解析に失敗しました',
-                processing: 'データを処理中...',
-                privacy: 'アップロードされたファイルは保存されず、分析後にすぐに削除されます',
-                scores: 'スコア - NSFW: {nsfw}, Normal: {normal}'
-            }
-        };
-
-        function changeLang(lang) {
-            document.querySelector('html').setAttribute('lang', lang);
-            document.querySelector('h1').textContent = translations[lang].title;
-            document.querySelector('h2').textContent = translations[lang].subtitle;
-            document.querySelector('#dropText').textContent = translations[lang].dropText;
-            document.querySelector('.hint').textContent = translations[lang].privacy;
-
-            document.querySelectorAll('.lang-switch button').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            document.querySelector(`button[onclick="changeLang('${lang}')"]`).classList.add('active');
-
-            currentLang = lang;
-        }
-
-        let currentLang = 'zh';
-
+        // Drag-and-Drop File Handling
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const progressBar = document.getElementById('progressBar');
         const progressBarFill = document.getElementById('progressBarFill');
         const result = document.getElementById('result');
+        const scores = document.getElementById('scores');
+
+        const SUPPORTED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff', 'mp4', 'avi', 'mkv', 'mov'];
 
         dropZone.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', handleFile);
+        fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
 
         dropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
             dropZone.classList.add('dragover');
         });
 
-        dropZone.addEventListener('dragleave', () => {
-            dropZone.classList.remove('dragover');
-        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
 
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
             const file = e.dataTransfer.files[0];
-            uploadFile(file);
+            if (file) handleFile(file);
         });
 
-        function handleFile(e) {
-            const file = e.target.files[0];
-            if (file) uploadFile(file);
-        }
+        function handleFile(file) {
+            const extension = file.name.split('.').pop().toLowerCase();
+            if (!SUPPORTED_EXTENSIONS.includes(extension)) {
+                result.textContent = 'Unsupported file type!';
+                result.className = 'result error';
+                return;
+            }
 
-        function uploadFile(file) {
+            console.log('Uploading file:', file.name);
+
             progressBar.style.display = 'block';
             progressBarFill.style.width = '0%';
             result.textContent = '';
@@ -361,41 +214,32 @@
             xhr.onreadystatechange = () => {
                 if (xhr.readyState === 4) {
                     if (xhr.status === 200) {
-                        result.textContent = translations[currentLang].processing;
                         const response = JSON.parse(xhr.responseText);
-                        try {
-                            if (response.status === "success") {
-                                const nsfw = response.result.nsfw.toFixed(4);
-                                const normal = response.result.normal.toFixed(4);
+                        if (response.status === 'success') {
+                            const nsfwScore = response.result.nsfw.toFixed(3);
+                            const normalScore = response.result.normal.toFixed(3);
 
-                                if (response.result.nsfw > 0.8) {
-                                    result.textContent = translations[currentLang].nsfw;
-                                    result.className = 'result error';
-                                } else {
-                                    result.textContent = translations[currentLang].normal;
-                                    result.className = 'result normal';
-                                }
-
-                                scores.textContent = translations[currentLang].scores
-                                    .replace('{nsfw}', nsfw)
-                                    .replace('{normal}', normal);
-                            } else {
-                                result.textContent = response.message;
+                            if (response.result.nsfw > 0.8) {
+                                result.textContent = 'NSFW Content Detected!';
                                 result.className = 'result error';
+                            } else {
+                                result.textContent = 'File is Safe';
+                                result.className = 'result normal';
                             }
-                        } catch (e) {
-                            result.textContent = response.message;
+
+                            scores.textContent = `Scores - NSFW: ${nsfwScore}, Normal: ${normalScore}`;
+                        } else {
+                            result.textContent = response.message || 'Unknown error occurred.';
                             result.className = 'result error';
                         }
                     } else {
-                        const response = JSON.parse(xhr.responseText);
-                        result.textContent = response.message;
+                        result.textContent = 'Failed to upload the file.';
                         result.className = 'result error';
                     }
                 }
             };
 
-            xhr.open('POST', 'check', true);
+            xhr.open('POST', '/check', true);
             xhr.send(formData);
         }
     </script>

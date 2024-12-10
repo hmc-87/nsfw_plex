@@ -1,249 +1,171 @@
-# app.py
-from flask import Flask, request, jsonify, send_file, Response
+from flask import Flask, request, jsonify, Response
 import tempfile
 import os
-import shutil
 import logging
 import magic
 from pathlib import Path
 from werkzeug.utils import secure_filename
 from config import MAX_FILE_SIZE, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, MIME_TO_EXT
-from utils import ArchiveHandler, can_process_file, sort_files_by_priority
 from processors import process_image, process_pdf_file, process_video_file, process_archive
 
-# 配置日志
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# 文件上传配置
-app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE  # 从config导入的最大文件大小
-app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()  # 使用系统临时目录
-app.request_class.max_form_memory_size = 128 * 1024 * 1024  # 强制所有上传写入磁盘
+# Set maximum upload size
+app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 
-# Load index.html content
+# Load `index.html` content once
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-with open(os.path.join(CURRENT_DIR, 'index.html'), 'r', encoding='utf-8') as f:
-    INDEX_HTML = f.read()
-
-class TempFileHandler:
-    """临时文件管理器"""
-    def __init__(self):
-        self.temp_files = []
-        
-    def create_temp_file(self, suffix=None):
-        """创建临时文件"""
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-        self.temp_files.append(temp_file.name)
-        return temp_file
-        
-    def cleanup(self):
-        """清理所有临时文件"""
-        for file_path in self.temp_files:
-            try:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
-            except Exception as e:
-                logger.error(f"清理临时文件失败 {file_path}: {str(e)}")
-        self.temp_files.clear()
+INDEX_HTML_PATH = os.path.join(CURRENT_DIR, 'index.html')
+if os.path.exists(INDEX_HTML_PATH):
+    with open(INDEX_HTML_PATH, 'r', encoding='utf-8') as f:
+        INDEX_HTML = f.read()
+else:
+    raise FileNotFoundError("index.html file is missing in the application directory.")
 
 def detect_file_type(file_path):
-    """检测文件类型，使用文件的前2048字节"""
+    """Detect file MIME type and extension using magic library."""
     try:
-        with open(file_path, 'rb') as f:
-            header = f.read(2048)
-        
         mime = magic.Magic(mime=True)
-        mime_type = mime.from_buffer(header)
-        
-        # 对于RAR文件的特殊处理
-        if mime_type not in MIME_TO_EXT:
-            with open(file_path, 'rb') as f:
-                if f.read(7).startswith(b'Rar!\x1a\x07'):
-                    return 'application/x-rar', '.rar'
-        
-        return mime_type, MIME_TO_EXT.get(mime_type)
-        
+        mime_type = mime.from_file(file_path)
+        ext = MIME_TO_EXT.get(mime_type)
+        return mime_type, ext
     except Exception as e:
-        logger.error(f"文件类型检测失败: {str(e)}")
+        logger.error(f"Failed to detect file type: {str(e)}")
         raise
-
-def process_file_by_type(file_path, detected_type, original_filename, temp_handler):
-    """根据文件类型选择处理方法"""
-    mime_type, ext = detected_type
-    
-    # 如果有原始文件扩展名，优先使用
-    if original_filename and '.' in original_filename:
-        original_ext = os.path.splitext(original_filename)[1].lower()
-        if original_ext in IMAGE_EXTENSIONS or original_ext == '.pdf' or \
-           original_ext in VIDEO_EXTENSIONS or original_ext in {'.rar', '.zip', '.7z', '.gz'}:
-            ext = original_ext
-    
-    if not ext:
-        logger.error(f"不支持的文件类型: {mime_type}")
-        return {
-            'status': 'error',
-            'message': f'Unsupported file type: {mime_type}'
-        }, 400
-    
-    try:
-        if ext in IMAGE_EXTENSIONS:
-            with open(file_path, 'rb') as f:
-                from PIL import Image
-                image = Image.open(f)
-                result = process_image(image)
-                return {
-                    'status': 'success',
-                    'filename': original_filename,
-                    'result': result
-                }
-                
-        elif ext == '.pdf':
-            with open(file_path, 'rb') as f:
-                pdf_stream = f.read()
-                result = process_pdf_file(pdf_stream)
-                if result:
-                    return {
-                        'status': 'success',
-                        'filename': original_filename,
-                        'result': result
-                    }
-                return {
-                    'status': 'error',
-                    'message': 'No processable content found in PDF'
-                }, 400
-                
-        elif ext in VIDEO_EXTENSIONS:
-            result = process_video_file(file_path)
-            if result:
-                return {
-                    'status': 'success',
-                    'filename': original_filename,
-                    'result': result
-                }
-            return {
-                'status': 'error',
-                'message': 'No processable content found in video'
-            }, 400
-                
-        elif ext in {'.zip', '.rar', '.7z', '.gz'}:
-            return process_archive(file_path, original_filename)
-            
-        else:
-            logger.error(f"不支持的文件扩展名: {ext}")
-            return {
-                'status': 'error',
-                'message': f'Unsupported file extension: {ext}'
-            }, 400
-            
-    except Exception as e:
-        logger.error(f"处理文件时出错: {str(e)}")
-        return {
-            'status': 'error',
-            'message': str(e)
-        }, 500
 
 @app.route('/')
 def index():
-    """Serve the index.html file"""
+    """Serve the HTML interface."""
     return Response(INDEX_HTML, mimetype='text/html')
 
 @app.route('/check', methods=['POST'])
 def check_file():
-    """统一的文件检查入口点"""
-    temp_handler = TempFileHandler()
+    """Handle file upload or local path for analysis."""
     try:
-        # 获取请求中的 path 参数
-        path = request.form.get('path')
-        
-        if path:
-            # 处理文件路径
-            abs_path = os.path.abspath(path)
-            app_dir = os.path.abspath(os.path.dirname(__file__))
-            
-            # 安全检查：确保路径不指向程序目录
-            if abs_path.startswith(app_dir):
-                return jsonify({
-                    'status': 'error',
-                    'message': 'Invalid path: cannot access program directory'
-                }), 400
-                
-            # 检查文件是否存在
+        if 'file' in request.files:
+            # File upload via POST
+            uploaded_file = request.files['file']
+            if not uploaded_file.filename:
+                return jsonify({'status': 'error', 'message': 'No file selected'}), 400
+
+            filename = secure_filename(uploaded_file.filename)
+            logger.info(f"Received uploaded file: {filename}")
+
+            # Save to a temporary file
+            temp_file = tempfile.NamedTemporaryFile(delete=False)
+            uploaded_file.save(temp_file.name)
+
+            # Check file size
+            file_size = os.path.getsize(temp_file.name)
+            if file_size > MAX_FILE_SIZE:
+                os.unlink(temp_file.name)
+                return jsonify({'status': 'error', 'message': 'File too large'}), 400
+
+            # Detect file type and process
+            mime_type, ext = detect_file_type(temp_file.name)
+            logger.info(f"Detected file type: {mime_type}, extension: {ext}")
+
+            return process_file(temp_file.name, ext, filename)
+
+        elif 'path' in request.form:
+            # Local path provided via form data
+            file_path = request.form['path']
+            abs_path = os.path.abspath(file_path)
+
+            # Check if file exists
             if not os.path.exists(abs_path):
-                return jsonify({
-                    'status': 'error',
-                    'message': 'File not found'
-                }), 404
-                
-            # 检查是否是文件
+                return jsonify({'status': 'error', 'message': 'File not found'}), 404
+
+            # Check if it's a file
             if not os.path.isfile(abs_path):
-                return jsonify({
-                    'status': 'error',
-                    'message': 'Path is not a file'
-                }), 400
-                
-            # 检查文件大小
+                return jsonify({'status': 'error', 'message': 'Path is not a file'}), 400
+
+            # Check file size
             file_size = os.path.getsize(abs_path)
             if file_size > MAX_FILE_SIZE:
-                return jsonify({
-                    'status': 'error',
-                    'message': 'File too large'
-                }), 400
-                
-            # 获取原始文件名
-            filename = os.path.basename(abs_path)
-            
-            # 检测文件类型
-            detected_type = detect_file_type(abs_path)
-            logger.info(f"检测到文件类型: {detected_type}")
-            
-            # 处理文件
-            result = process_file_by_type(abs_path, detected_type, filename, temp_handler)
-            return jsonify(result) if isinstance(result, dict) else jsonify(result[0]), result[1] if isinstance(result, tuple) else 200
-            
-        # 文件上传处理逻辑
-        elif 'file' not in request.files:
-            return jsonify({
-                'status': 'error',
-                'message': 'No file found'
-            }), 400
-            
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({
-                'status': 'error',
-                'message': 'No file selected'
-            }), 400
+                return jsonify({'status': 'error', 'message': 'File too large'}), 400
 
-        filename = secure_filename(file.filename)
-        logger.info(f"接收到文件: {filename}")
-        
-        temp_file = temp_handler.create_temp_file()
-        file.save(temp_file.name)
-        
-        file_size = os.path.getsize(temp_file.name)
-        if file_size > MAX_FILE_SIZE:
-            return jsonify({
-                'status': 'error',
-                'message': 'File too large'
-            }), 400
-        
-        detected_type = detect_file_type(temp_file.name)
-        logger.info(f"检测到文件类型: {detected_type}")
-        
-        result = process_file_by_type(temp_file.name, detected_type, filename, temp_handler)
-        return jsonify(result) if isinstance(result, dict) else jsonify(result[0]), result[1] if isinstance(result, tuple) else 200
+            # Detect file type and process
+            mime_type, ext = detect_file_type(abs_path)
+            logger.info(f"Detected file type: {mime_type}, extension: {ext}")
+
+            return process_file(abs_path, ext, os.path.basename(abs_path))
+
+        else:
+            return jsonify({'status': 'error', 'message': 'No file or path provided'}), 400
 
     except Exception as e:
-        logger.error(f"处理过程发生错误: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': str(e)
-        }), 500
-        
+        logger.error(f"Error during file processing: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+def process_file(file_path, ext, original_filename):
+    """Process the file based on its type."""
+    try:
+        if ext in IMAGE_EXTENSIONS:
+            from PIL import Image
+            with Image.open(file_path) as img:
+                result = process_image(img)
+            return jsonify({
+                'status': 'success',
+                'filename': original_filename,
+                'result': result
+            })
+
+        elif ext == '.pdf':
+            with open(file_path, 'rb') as f:
+                pdf_stream = f.read()
+            result = process_pdf_file(pdf_stream)
+            if result:
+                return jsonify({
+                    'status': 'success',
+                    'filename': original_filename,
+                    'result': result
+                })
+            return jsonify({'status': 'error', 'message': 'No processable content found in PDF'}), 400
+
+        elif ext in VIDEO_EXTENSIONS:
+            result = process_video_file(file_path)
+            if result:
+                # Include NSFW detection scores in the response
+                return jsonify({
+                    'status': 'success',
+                    'filename': original_filename,
+                    'result': {
+                        'nsfw': result.get('nsfw', 0),
+                        'normal': result.get('normal', 1)
+                    },
+                    'message': result.get('message', 'Processed video successfully.')
+                }), 200
+            else:
+                # No NSFW content was found
+                return jsonify({
+                    'status': 'success',
+                    'filename': original_filename,
+                    'result': {
+                        'nsfw': 0,
+                        'normal': 1
+                    },
+                    'message': 'No NSFW content detected in video.'
+                }), 200
+
+        elif ext in {'.zip', '.rar', '.7z', '.gz'}:
+            result = process_archive(file_path, original_filename)
+            return jsonify(result) if isinstance(result, dict) else jsonify(result[0]), result[1]
+
+        else:
+            logger.error(f"Unsupported file extension: {ext}")
+            return jsonify({'status': 'error', 'message': f'Unsupported file type: {ext}'}), 400
+
+    except Exception as e:
+        logger.error(f"Error processing file: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
     finally:
-        # 清理所有临时文件
-        temp_handler.cleanup()
+        if os.path.exists(file_path):
+            os.unlink(file_path)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3333)

@@ -1,13 +1,13 @@
 # build.ps1
 
-# 默认配置值
+# Default configuration values
 $script:ImageName = "vxlink/nsfw_detector"
-$script:Version = "v1.8"  # 默认版本，如果无法读取 build.version 文件时使用
+$script:Version = "v1.8"  # Default version if build.version file is not found
 $script:Push = $false
 $script:CacheDir = "$env:USERPROFILE\.docker\nsfw_detector_cache"
 $script:CacheFrom = ""
 
-# 读取 build.version 文件
+# Read build.version file
 $VersionFile = Join-Path $PSScriptRoot "build.version"
 if (Test-Path $VersionFile) {
     $script:Version = (Get-Content $VersionFile).Trim()
@@ -16,12 +16,12 @@ if (Test-Path $VersionFile) {
     Write-Host "Warning: version file not found at $VersionFile, using default version $Version"
 }
 
-# 获取本机平台
+# Get native platform
 $script:NativePlatform = $(docker version --format '{{.Server.Os}}/{{.Server.Arch}}').Replace('x86_64', 'amd64')
 
-# 设置目标平台
+# Set target platform
 $script:AllPlatforms = "linux/amd64,linux/arm64"
-$script:Platform = $NativePlatform  # 默认仅构建本机平台
+$script:Platform = $NativePlatform  # Default to building only for the native platform
 
 function Show-Help {
     Write-Host "Usage: .\build.ps1 [options]"
@@ -34,7 +34,7 @@ function Show-Help {
     Write-Host "  -Help         Show this help message"
 }
 
-# 参数定义
+# Parameter definitions
 param(
     [switch]$Push,
     [string]$Version,
@@ -44,16 +44,16 @@ param(
     [switch]$Help
 )
 
-# 处理帮助参数
+# Handle help parameter
 if ($Help) {
     Show-Help
     exit 0
 }
 
-# 处理参数
+# Process parameters
 if ($Push) {
     $script:Push = $true
-    $script:Platform = $AllPlatforms  # 推送时默认构建所有平台
+    $script:Platform = $AllPlatforms  # Pushing implies building for all platforms
 }
 
 if ($Version) {
@@ -72,7 +72,7 @@ if ($AllPlatforms) {
     $script:Platform = $AllPlatforms
 }
 
-# 显示配置信息
+# Display configuration information
 Write-Host "Building with configuration:"
 Write-Host "- Version: $Version"
 Write-Host "- Push to registry: $Push"
@@ -80,12 +80,12 @@ Write-Host "- Native platform: $NativePlatform"
 Write-Host "- Target platforms: $Platform"
 Write-Host "- Cache enabled: $(if ($CacheFrom -eq "") { 'yes' } else { 'no' })"
 
-# 创建缓存目录
+# Create cache directory if it does not exist
 if (-not (Test-Path $CacheDir)) {
     New-Item -ItemType Directory -Path $CacheDir -Force | Out-Null
 }
 
-# 配置 buildx 构建器
+# Configure buildx builder
 $BuilderName = "nsfw-detector-builder"
 $builderExists = $null
 try {
@@ -104,14 +104,14 @@ if (-not $builderExists) {
     docker buildx use $BuilderName
 }
 
-# 设置缓存配置参数
+# Set cache configuration parameters
 if ($CacheFrom -eq "") {
     $CacheConfig = "--cache-from=type=local,src=$CacheDir --cache-to=type=local,dest=$CacheDir,mode=max"
 } else {
     $CacheConfig = $CacheFrom
 }
 
-# 构建基础命令
+# Build base command
 $BuildCmd = "docker buildx build " +
     "--platform $Platform " +
     "--tag ${ImageName}:${Version} " +
@@ -121,23 +121,23 @@ $BuildCmd = "docker buildx build " +
     "--build-arg BUILDKIT_INLINE_CACHE=1"
 
 if ($Push) {
-    # 远程构建模式：推送到仓库
+    # Remote build mode: Push images to the registry
     $BuildCmd += " --push"
 } elseif ($Platform -eq $NativePlatform) {
-    # 本地构建模式（单一本机平台）：使用 --load
+    # Local build mode (single native platform): Use --load
     $BuildCmd += " --load"
 } else {
-    # 本地构建模式（多平台或非本机平台）
-    Write-Host "Warning: Building for non-native platform(s). Images will be available through docker buildx, but not in regular docker images list."
+    # Local build mode (multi-platform or non-native platforms)
+    Write-Host "Warning: Building for non-native platform(s). Images will be available through docker buildx, but not in the regular docker images list."
 }
 
 $BuildCmd += " ."
 
-# 执行构建
+# Execute build
 Write-Host "Executing build command..."
 Invoke-Expression $BuildCmd
 
-# 验证构建结果（仅在推送模式下）
+# Verify build results (only in push mode)
 if ($Push) {
     Write-Host "Verifying manifest for version $Version..."
     docker manifest inspect "${ImageName}:${Version}"
@@ -146,7 +146,7 @@ if ($Push) {
     docker manifest inspect "${ImageName}:latest"
 }
 
-# 清理和切换构建器
+# Cleanup and builder switching
 if ($Push) {
     docker buildx use default
 } else {
@@ -163,5 +163,5 @@ if ($Push) {
 } elseif ($Platform -eq $NativePlatform) {
     Write-Host "Images are available locally via 'docker images'"
 } else {
-    Write-Host "Images are available through buildx"
+    Write-Host "Images are available through docker buildx"
 }

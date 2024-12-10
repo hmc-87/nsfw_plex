@@ -1,3 +1,4 @@
 nsfw_threshold = 0.95
+FFMPEG_TIME_LIMIT = 180  # 3 minutes
 ffmpeg_max_frames = 30
 ffmpeg_max_timeout = 1800

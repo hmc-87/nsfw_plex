@@ -1,0 +1,18 @@
+services:
+  nsfw-detector:
+    image: hmc-87/nsfw_plex:latest
+    container_name: nsfw-detector
+    ports:
+      - "3333:3333"  # Expose the API on port 3333
+    volumes:
+      - /merged:/media  # Map your media folder
+      - ./nsfw-detector/tmp:/tmp  # Temporary directory for configurations
+    environment:
+      - MEDIA_FOLDER=/media  # Set the monitored folder dynamically
+      # Email Configuration
+      - SMTP_SERVER=smtp.gmail.com
+      - SMTP_PORT=587
+      - FROM_EMAIL=your_email@gmail.com
+      - FROM_PASSWORD=your_email_password
+      - TO_EMAIL=recipient_email@example.com
+    restart: unless-stopped

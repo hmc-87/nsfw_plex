@@ -5,7 +5,7 @@ import logging
 import magic
 from pathlib import Path
 from werkzeug.utils import secure_filename
-from config import MAX_FILE_SIZE, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, MIME_TO_EXT
+from config import get_config, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, MIME_TO_EXT
 from processors import process_image, process_pdf_file, process_video_file, process_archive
 
 # Configure logging
@@ -13,6 +13,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# Retrieve MAX_FILE_SIZE dynamically
+MAX_FILE_SIZE = get_config("MAX_FILE_SIZE", 20 * 1024 * 1024 * 1024)
 
 # Set maximum upload size
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
